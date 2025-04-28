@@ -64,7 +64,6 @@ use {
     },
 };
 use crate::connection_manager::ConnectionManager;
-// use crate::redis::redis_client_wrapper::RedisClientWrapper;
 use crate::redis::redis_quota_checker::start_redis_quota_checker;
 use crate::redis::refreshing_fallback_cache::RefreshingFallbackCache;
 
@@ -448,8 +447,8 @@ impl GrpcService {
 
         let quota_cache = Arc::new(
             RefreshingFallbackCache::new(
-                "redis://localhost:6379",
-                "your-prefix".to_string(),
+                &config.redis_url,
+                config.redis_prefix,
                 Duration::from_secs(30),    // ttl
                 10_000,                     // capacity
                 Duration::from_secs(15),    // background buffer
