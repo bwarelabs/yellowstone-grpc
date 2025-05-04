@@ -1,9 +1,5 @@
 use {
     serde::Serialize,
-    time::{
-        serde::timestamp,
-        OffsetDateTime
-    },
     log::error,
     rdkafka::{
         producer::{
@@ -24,9 +20,25 @@ use {
 #[derive(Debug, Serialize)]
 pub struct BillingEvent {
     pub team_id: String,
-    pub bytes: u64,
-    #[serde(with = "timestamp")]
-    pub timestamp: OffsetDateTime,
+    pub app_id: String,
+    pub eth_method: String,
+    pub eth_network: String,
+    pub subscription_id: String,
+    pub subscription_type: String,
+    pub log_source: String,
+    pub response_content_length: u64,
+}
+#[derive(Debug, Serialize)]
+struct KafkaPayload {
+    namespace: String,
+    records: Vec<KafkaRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct KafkaRecord {
+    #[serde(rename = "partitionKey")]
+    partition_key: String,
+    data: BillingEvent,
 }
 
 pub struct KafkaProducerService {
@@ -46,25 +58,26 @@ impl KafkaProducerService {
 
         let handle = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
-                match serde_json::to_string(&event) {
+                let kafka_payload = KafkaPayload {
+                    namespace: "websocket-subscriptions".to_string(),
+                    records: vec![KafkaRecord {
+                        partition_key: format!("team-{}", event.team_id),
+                        data: event,
+                    }],
+                };
+
+                match serde_json::to_string(&kafka_payload) {
                     Ok(payload) => {
                         let record = FutureRecord::to(&kafka_topic)
                             .payload(&payload)
-                            .key(&event.team_id);
+                            .key(&kafka_payload.records[0].partition_key);
 
-                        // TODO: Timeout?
                         match producer.send(record, Duration::from_secs(5)).await {
-                            Ok(_) => {
-                                // Delivered successfully
-                            }
-                            Err((e, _)) => {
-                                error!("Kafka delivery failed: {:?}", e);
-                            }
+                            Ok(_) => {}
+                            Err((e, _)) => error!("Kafka delivery failed: {:?}", e),
                         }
                     }
-                    Err(e) => {
-                        error!("Failed to serialize billing event: {:?}", e);
-                    }
+                    Err(e) => error!("Failed to serialize Kafka payload: {:?}", e),
                 }
             }
         });

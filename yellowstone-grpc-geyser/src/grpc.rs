@@ -20,7 +20,6 @@ use {
         },
         time::SystemTime,
     },
-    time::{OffsetDateTime},
     tokio::{
         fs,
         runtime::Builder,
@@ -438,7 +437,7 @@ impl GrpcService {
         )));
 
         // TODO - handle kafka task shutdown on grpc server close
-        let (kafka_service, kafka_task) = KafkaProducerService::new(
+        let (kafka_service, _kafka_task) = KafkaProducerService::new(
             &config.billing_kafka_brokers,
             config.billing_kafka_username.as_deref(),
             config.billing_kafka_password.as_deref(),
@@ -886,10 +885,12 @@ impl GrpcService {
         debug_client_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
         drop_client: impl FnOnce(),
         team_id: String,
+        app_id: String,
+        network: String,
         billing_tx: mpsc::Sender<BillingEvent>,
         shutdown_tx: broadcast::Sender<()>,
     ) {
-        let mut bytes_sent: u64 = 0;
+        let mut bytes_sent_by_type: HashMap<&'static str, u64> = HashMap::new();
         // TODO - configs
         let mut billing_ticker = tokio::time::interval(Duration::from_secs(10));
 
@@ -1025,8 +1026,12 @@ impl GrpcService {
                         if commitment == filter.get_commitment_level() {
                             for (_msgid, message) in messages.iter() {
                                 for message in filter.get_updates(message, Some(commitment)) {
-                                    let size = ProstMessage::encoded_len(&message) as u64;
-                                    bytes_sent += size;
+                                    let message_type = message.message.subscription_type();
+                                    if message_type != "ping" && message_type != "pong" {
+                                        let size = ProstMessage::encoded_len(&message) as u64;
+                                        *bytes_sent_by_type.entry(message_type).or_default() += size;
+                                    }
+
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {}
                                         Err(mpsc::error::TrySendError::Full(_)) => {
@@ -1054,14 +1059,22 @@ impl GrpcService {
                         }
                     }
                     // If a billing ticker is received, it will be used to update the billing
-                     _ = billing_ticker.tick() => {
-                        if bytes_sent > 0 {
-                           let event = BillingEvent {
-                                team_id: team_id.to_string(),
-                                bytes: std::mem::take(&mut bytes_sent),
-                                timestamp: OffsetDateTime::now_utc(),
-                                };
-                            let _ = billing_tx.send(event).await;
+                    _ = billing_ticker.tick() => {
+                        for (message_type, size) in bytes_sent_by_type.drain() {
+                            let event = BillingEvent {
+                                app_id: app_id.clone(),
+                                team_id: team_id.clone(),
+                                eth_method: message_type.to_string(),
+                                eth_network: network.clone(),
+                                subscription_id: format!("grpc-client-{}", id),
+                                subscription_type: message_type.to_string(),
+                                log_source: "grpc".to_string(),
+                                response_content_length: size,
+                            };
+
+                            if let Err(err) = billing_tx.try_send(event) {
+                                error!("Billing channel full or closed for client #{id}: {err}");
+                            }
                         }
                     }
 
@@ -1187,6 +1200,25 @@ impl Geyser for GrpcService {
             .map_err(|_| Status::invalid_argument("invalid team id"))?
             .to_string();
 
+        let app_id = request
+            .metadata()
+            .get("x-app-id")
+            .ok_or(Status::invalid_argument("missing app id"))?
+            .to_str()
+            .map_err(|_| Status::invalid_argument("invalid app id"))?
+            .to_string();
+
+        let network = match request
+            .metadata()
+            .get("x-network")
+            .and_then(|val| val.to_str().ok())
+        {
+            Some("mainnet") => "SOLANA_MAINNET".to_string(),
+            Some("devnet") => "SOLANA_DEVNET".to_string(),
+            Some(val) => format!("SOLANA_{}", val.to_uppercase()),
+            None => "SOLANA_UNKNOWN".to_string(),
+        };
+
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
         self.connection_manager.register(team_id.clone(), shutdown_tx.clone());
@@ -1309,6 +1341,8 @@ impl Geyser for GrpcService {
                 notify_exit2.notify_one();
             },
             team_id,
+            app_id,
+            network,
             self.billing_tx.clone(),
             shutdown_tx.clone(),
         ));
