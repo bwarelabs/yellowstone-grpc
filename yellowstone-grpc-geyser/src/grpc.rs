@@ -1,12 +1,18 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
+        kafka_producer_service::{BillingEvent, KafkaProducerService},
         metrics::{self, DebugClientMessage},
         version::GrpcVersionInfo,
-        kafka_producer_service::{BillingEvent, KafkaProducerService},
+        connection_manager::ConnectionManager,
+        redis::{
+            redis_quota_checker::start_redis_quota_checker,
+            refreshing_fallback_cache::RefreshingFallbackCache,
+        }
     },
     anyhow::Context,
     log::{error, info},
+    prost::Message as ProstMessage,
     prost_types::Timestamp,
     solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
@@ -37,9 +43,6 @@ use {
         Request, Response, Result as TonicResult, Status, Streaming,
     },
     tonic_health::server::health_reporter,
-    prost::{
-        Message as ProstMessage,
-    },
     yellowstone_grpc_proto::{
         plugin::{
             filter::{
@@ -62,9 +65,6 @@ use {
         },
     },
 };
-use crate::connection_manager::ConnectionManager;
-use crate::redis::redis_quota_checker::start_redis_quota_checker;
-use crate::redis::refreshing_fallback_cache::RefreshingFallbackCache;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -437,8 +437,7 @@ impl GrpcService {
             config.filter_names_cleanup_interval,
         )));
 
-        // TODO - handle kafka task shutdown on grpc server close
-        let (kafka_service, _kafka_task) = KafkaProducerService::new(
+        let (kafka_service, kafka_task) = KafkaProducerService::new(
             &config.billing_kafka_brokers,
             config.billing_kafka_username.as_deref(),
             config.billing_kafka_password.as_deref(),
@@ -454,8 +453,8 @@ impl GrpcService {
                 config.redis_background_buffer,
                 Arc::new(|opt| matches!(opt.as_deref(), Some("CAPPED"))),
             )
-                .await
-                .expect("failed to initialize quota cache"),
+            .await
+            .expect("failed to initialize quota cache"),
         );
 
         let connection_manager = Arc::new(ConnectionManager::new());
@@ -540,6 +539,17 @@ impl GrpcService {
                 .add_service(service)
                 .serve_with_incoming_shutdown(incoming, shutdown_grpc.notified())
                 .await
+                .ok();
+        });
+
+        let shutdown_clone = Arc::clone(&shutdown);
+        tokio::spawn(async move {
+            shutdown_clone.notified().await;
+
+            match kafka_task.await {
+                Ok(_) => info!("Kafka task shut down cleanly."),
+                Err(e) => error!("Kafka task shutdown with error: {:?}", e),
+            }
         });
 
         Ok((snapshot_tx, messages_tx, shutdown))
@@ -1223,7 +1233,8 @@ impl Geyser for GrpcService {
 
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-        self.connection_manager.register(team_id.clone(), shutdown_tx.clone());
+        self.connection_manager
+            .register(team_id.clone(), shutdown_tx.clone());
 
         let ping_shutdown_tx = shutdown_tx.clone();
         // Spawns the task that sends ping messages to the client
