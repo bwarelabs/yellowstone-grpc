@@ -350,6 +350,7 @@ pub struct GrpcService {
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
     billing_tx: mpsc::Sender<BillingEvent>,
+    billing_ticker_interval: Duration,
     connection_manager: Arc<ConnectionManager>,
 }
 
@@ -447,11 +448,11 @@ impl GrpcService {
         let quota_cache = Arc::new(
             RefreshingFallbackCache::new(
                 &config.redis_url,
-                config.redis_prefix,
-                Duration::from_secs(30),    // ttl
-                10_000,                     // capacity
-                Duration::from_secs(15),    // background buffer
-                Arc::new(|opt| matches!(opt.as_deref(), Some("CAPPED"))), // how to parse Redis value
+                config.redis_prefix.clone(),
+                config.redis_cache_ttl,
+                config.redis_cache_capacity,
+                config.redis_background_buffer,
+                Arc::new(|opt| matches!(opt.as_deref(), Some("CAPPED"))),
             )
                 .await
                 .expect("failed to initialize quota cache"),
@@ -479,6 +480,7 @@ impl GrpcService {
             debug_clients_tx,
             filter_names,
             billing_tx: kafka_service.sender.clone(),
+            billing_ticker_interval: config.billing_ticker_interval,
             connection_manager,
         })
         .max_decoding_message_size(max_decoding_message_size);
@@ -888,11 +890,11 @@ impl GrpcService {
         app_id: String,
         network: String,
         billing_tx: mpsc::Sender<BillingEvent>,
+        billing_ticker_interval: Duration,
         shutdown_tx: broadcast::Sender<()>,
     ) {
         let mut bytes_sent_by_type: HashMap<&'static str, u64> = HashMap::new();
-        // TODO - configs
-        let mut billing_ticker = tokio::time::interval(Duration::from_secs(10));
+        let mut billing_ticker = tokio::time::interval(billing_ticker_interval);
 
         let mut shutdown_rx = shutdown_tx.subscribe();
 
@@ -1344,6 +1346,7 @@ impl Geyser for GrpcService {
             app_id,
             network,
             self.billing_tx.clone(),
+            self.billing_ticker_interval,
             shutdown_tx.clone(),
         ));
 

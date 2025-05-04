@@ -214,8 +214,16 @@ pub struct ConfigGrpc {
     pub billing_kafka_username: Option<String>,
     #[serde(default)]
     pub billing_kafka_password: Option<String>,
+    #[serde(default = "ConfigGrpc::default_billing_ticker_interval", with = "humantime_serde")]
+    pub billing_ticker_interval: Duration,
     pub redis_url: String,
     pub redis_prefix: String,
+    #[serde(default = "ConfigGrpc::default_redis_cache_ttl", with = "humantime_serde")]
+    pub redis_cache_ttl: Duration,
+    #[serde(default = "ConfigGrpc::default_redis_cache_capacity")]
+    pub redis_cache_capacity: usize,
+    #[serde(default = "ConfigGrpc::default_redis_background_buffer", with = "humantime_serde")]
+    pub redis_background_buffer: Duration,
 }
 
 impl ConfigGrpc {
@@ -253,6 +261,22 @@ impl ConfigGrpc {
 
     const fn default_replay_stored_slots() -> u64 {
         0
+    }
+
+    const fn default_billing_ticker_interval() -> Duration {
+        Duration::from_secs(10)
+    }
+
+    const fn default_redis_cache_ttl() -> Duration {
+        Duration::from_secs(30)
+    }
+
+    const fn default_redis_cache_capacity() -> usize {
+        10_000
+    }
+
+    const fn default_redis_background_buffer() -> Duration {
+        Duration::from_secs(15)
     }
 }
 

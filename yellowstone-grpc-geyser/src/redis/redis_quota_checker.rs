@@ -1,5 +1,6 @@
 use tokio::time::{interval, Duration};
 use std::sync::Arc;
+use time::OffsetDateTime;
 use crate::connection_manager::ConnectionManager;
 use crate::redis::refreshing_fallback_cache::RefreshingFallbackCache;
 
@@ -15,7 +16,11 @@ pub async fn start_redis_quota_checker(
 
         let teams = manager.list_active_teams();
         for team_id in teams {
-            match quota_cache.get_or_refresh(&team_id).await {
+            let now = OffsetDateTime::now_utc();
+            let year_month = format!("{:04}-{:02}", now.year(), now.month() as u8);
+            let key_suffix = format!("{}:{}", year_month, team_id);
+
+            match quota_cache.get_or_refresh(&key_suffix).await {
                 Ok(true) => {
                     log::info!("Team {} is capped, shutting down connection", team_id);
                     manager.shutdown_client(&team_id);
