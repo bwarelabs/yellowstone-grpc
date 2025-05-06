@@ -1,20 +1,15 @@
 use {
-    serde::Serialize,
-    log::error,
-    rdkafka::{
+    log::{error}, rdkafka::{
         producer::{
             FutureProducer,
             FutureRecord,
         },
         ClientConfig,
-    },
-    serde_json,
-    tokio::sync::mpsc::{
+    }, serde::Serialize, serde_json, std::time::Duration, tokio::sync::mpsc::{
         self,
         Receiver,
         Sender
-    },
-    std::time::Duration,
+    }
 };
 
 #[derive(Debug, Serialize)]

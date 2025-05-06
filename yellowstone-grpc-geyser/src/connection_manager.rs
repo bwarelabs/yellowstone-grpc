@@ -14,8 +14,12 @@ impl ConnectionManager {
         }
     }
 
+    pub fn get_existing_sender(&self, team_id: &str) -> Option<broadcast::Sender<()>> {
+        self.connections.get(team_id).map(|s| s.clone())
+    }
+
     pub fn register(&self, team_id: String, shutdown_tx: broadcast::Sender<()>) {
-        self.connections.insert(team_id, shutdown_tx);
+        self.connections.entry(team_id).or_insert(shutdown_tx);
     }
 
     pub fn unregister(&self, team_id: &str) {

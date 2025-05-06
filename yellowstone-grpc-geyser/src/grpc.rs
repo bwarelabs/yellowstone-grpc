@@ -1,14 +1,14 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
+        connection_manager::ConnectionManager,
         kafka_producer_service::{BillingEvent, KafkaProducerService},
         metrics::{self, DebugClientMessage},
-        version::GrpcVersionInfo,
-        connection_manager::ConnectionManager,
         redis::{
             redis_quota_checker::start_redis_quota_checker,
             refreshing_fallback_cache::RefreshingFallbackCache,
-        }
+        },
+        version::GrpcVersionInfo,
     },
     anyhow::Context,
     log::{error, info},
@@ -462,6 +462,7 @@ impl GrpcService {
         tokio::spawn(start_redis_quota_checker(
             connection_manager.clone(),
             quota_cache.clone(),
+            // TODO - move to config
             Duration::from_secs(10), // check every 10s
         ));
 
@@ -899,6 +900,7 @@ impl GrpcService {
         team_id: String,
         app_id: String,
         network: String,
+        connection_manager: Arc<ConnectionManager>,
         billing_tx: mpsc::Sender<BillingEvent>,
         billing_ticker_interval: Duration,
         shutdown_tx: broadcast::Sender<()>,
@@ -932,6 +934,8 @@ impl GrpcService {
             .await;
         }
 
+        let mut registered_in_cm = false;
+
         if is_alive {
             'outer: loop {
                 tokio::select! {
@@ -953,6 +957,13 @@ impl GrpcService {
                         match message {
                             Some(Some((from_slot, filter_new))) => {
                                 metrics::update_subscriptions(&endpoint, Some(&filter), Some(&filter_new));
+
+                                // Register only when a valid filter is set
+                                if !registered_in_cm {
+                                    connection_manager.register(team_id.clone(), shutdown_tx.clone());
+                                    registered_in_cm = true;
+                                }
+
                                 filter = filter_new;
                                 DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::UpdateFilter { id, filter: Box::new(filter.clone()) });
                                 info!("client #{id}: filter updated");
@@ -1091,7 +1102,7 @@ impl GrpcService {
                     }
 
                     _ = shutdown_rx.recv() => {
-                        info!("Shutdown signal received for client #{id}");
+                        info!("Shutdown signal received for client #{id} - geyser task");
                         if let Err(e) = stream_tx.send(Err(Status::resource_exhausted(
                           "connection closed: quota exceeded",
                         ))).await {
@@ -1206,7 +1217,7 @@ impl Geyser for GrpcService {
 
         let team_id = request
             .metadata()
-            .get("x-team-id")
+            .get("x-alchemy-team-id")
             .ok_or(Status::invalid_argument("missing team id"))?
             .to_str()
             .map_err(|_| Status::invalid_argument("invalid team id"))?
@@ -1214,7 +1225,7 @@ impl Geyser for GrpcService {
 
         let app_id = request
             .metadata()
-            .get("x-app-id")
+            .get("x-alchemy-app-id")
             .ok_or(Status::invalid_argument("missing app id"))?
             .to_str()
             .map_err(|_| Status::invalid_argument("invalid app id"))?
@@ -1222,19 +1233,26 @@ impl Geyser for GrpcService {
 
         let network = match request
             .metadata()
-            .get("x-network")
+            .get("x-alchemy-network")
             .and_then(|val| val.to_str().ok())
         {
-            Some("mainnet") => "SOLANA_MAINNET".to_string(),
-            Some("devnet") => "SOLANA_DEVNET".to_string(),
-            Some(val) => format!("SOLANA_{}", val.to_uppercase()),
-            None => "SOLANA_UNKNOWN".to_string(),
+            Some("SOLANA_MAINNET") => "SOLANA_MAINNET".to_string(),
+            Some("SOLANA_DEVNET") => "SOLANA_DEVNET".to_string(),
+            Some(other) => {
+                return Err(Status::invalid_argument(format!(
+                    "invalid network: {}",
+                    other
+                )));
+            }
+            None => {
+                return Err(Status::invalid_argument("missing network"));
+            }
         };
 
-        let (shutdown_tx, _) = broadcast::channel::<()>(1);
+        let shutdown_tx = self.connection_manager
+            .get_existing_sender(&team_id)
+            .unwrap_or_else(|| broadcast::channel(2).0);
 
-        self.connection_manager
-            .register(team_id.clone(), shutdown_tx.clone());
 
         let ping_shutdown_tx = shutdown_tx.clone();
         // Spawns the task that sends ping messages to the client
@@ -1260,7 +1278,7 @@ impl Geyser for GrpcService {
                         }
                     }
                     _ = shutdown_rx.recv() => {
-                        info!("Shutdown signal received for client #{id}");
+                        info!("Shutdown signal received for client #{id} - ping task");
                         break;
                     }
                 }
@@ -1293,7 +1311,7 @@ impl Geyser for GrpcService {
                         break;
                     }
                     _ = shutdown_rx.recv() => {
-                        info!("Shutdown signal received for client #{id}");
+                        info!("Shutdown signal received for client #{id} - filter task");
                         break;
                     }
                     message = request.get_mut().message() => match message {
@@ -1339,6 +1357,10 @@ impl Geyser for GrpcService {
             }
         });
 
+        let connection_manager = Arc::clone(&self.connection_manager);
+        let team_id_clone = team_id.clone();
+        let cm = Arc::clone(&self.connection_manager);
+
         // Spawns the task that listens for messages from solana RPC
         tokio::spawn(Self::client_loop(
             id,
@@ -1350,12 +1372,14 @@ impl Geyser for GrpcService {
             self.replay_stored_slots_tx.clone(),
             self.debug_clients_tx.clone(),
             move || {
+                connection_manager.unregister(&team_id_clone);
                 notify_exit1.notify_one();
                 notify_exit2.notify_one();
             },
             team_id,
             app_id,
             network,
+            cm,
             self.billing_tx.clone(),
             self.billing_ticker_interval,
             shutdown_tx.clone(),

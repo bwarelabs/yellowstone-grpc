@@ -1,8 +1,8 @@
-use tokio::time::{interval, Duration};
-use std::sync::Arc;
-use time::OffsetDateTime;
 use crate::connection_manager::ConnectionManager;
 use crate::redis::refreshing_fallback_cache::RefreshingFallbackCache;
+use std::sync::Arc;
+use time::OffsetDateTime;
+use tokio::time::{interval, Duration};
 
 pub async fn start_redis_quota_checker(
     manager: Arc<ConnectionManager>,
@@ -24,6 +24,7 @@ pub async fn start_redis_quota_checker(
                 Ok(true) => {
                     log::info!("Team {} is capped, shutting down connection", team_id);
                     manager.shutdown_client(&team_id);
+                    manager.unregister(&team_id);
                 }
                 Ok(false) => {
                     // Team is fine, do nothing
