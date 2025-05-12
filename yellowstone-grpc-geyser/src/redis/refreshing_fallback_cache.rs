@@ -1,10 +1,14 @@
-use deadpool_redis::{Config, Pool, Connection, Runtime};
-use moka::future::Cache;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use anyhow::Result;
-use deadpool_redis::redis::AsyncCommands;
-use log::{error};
+use {
+    deadpool_redis::{Config, Pool, Connection, Runtime},
+    moka::future::Cache,
+    std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    },
+    anyhow::Result,
+    deadpool_redis::redis::AsyncCommands,
+    log::error,
+};
 
 #[derive(Clone)]
 pub struct RefreshingFallbackCache<V>
