@@ -1249,10 +1249,8 @@ impl Geyser for GrpcService {
             }
         };
 
-        let shutdown_tx = self.connection_manager
-            .get_existing_sender(&team_id)
-            .unwrap_or_else(|| broadcast::channel(2).0);
-
+        let (shutdown_tx, _) = broadcast::channel::<()>(1);
+        self.connection_manager.register(team_id.clone(), shutdown_tx.clone());
 
         let ping_shutdown_tx = shutdown_tx.clone();
         // Spawns the task that sends ping messages to the client
