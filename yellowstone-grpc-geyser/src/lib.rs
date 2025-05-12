@@ -4,8 +4,8 @@ pub mod kafka_producer_service;
 pub mod metrics;
 pub mod plugin;
 pub mod version;
-pub mod connection_manager;
 pub mod redis;
+pub mod user_connection;
 
 pub fn get_thread_name() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
