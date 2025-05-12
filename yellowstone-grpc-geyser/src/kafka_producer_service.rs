@@ -1,4 +1,5 @@
 use {
+    crate::metrics::{BILLING_EVENTS_SENT, BILLING_EVENT_SEND_ERRORS, BILLING_EVENT_SEND_DURATION},
     log::error,
     rdkafka::{
         producer::{FutureProducer, FutureRecord},
@@ -44,13 +45,19 @@ impl KafkaProducerService {
         kafka_username: Option<&str>,
         kafka_password: Option<&str>,
         kafka_topic: String,
+        kafka_queue_timeout: Duration,
+        kafka_send_channel_size: usize,
     ) -> (Self, tokio::task::JoinHandle<()>) {
-        let (tx, mut rx): (Sender<BillingEvent>, Receiver<BillingEvent>) = mpsc::channel(10000);
+        let (tx, mut rx): (Sender<BillingEvent>, Receiver<BillingEvent>) = mpsc::channel(
+            kafka_send_channel_size,
+        );
 
         let producer = Self::build_producer(kafka_brokers, kafka_username, kafka_password);
 
         let handle = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
+                let start = std::time::Instant::now();
+
                 let kafka_payload = KafkaPayload {
                     namespace: "websocket-subscriptions".to_string(),
                     records: vec![KafkaRecord {
@@ -65,12 +72,20 @@ impl KafkaProducerService {
                             .payload(&payload)
                             .key(&kafka_payload.records[0].partition_key);
 
-                        match producer.send(record, Duration::from_secs(5)).await {
-                            Ok(_) => {}
-                            Err((e, _)) => error!("Kafka delivery failed: {:?}", e),
+                        match producer.send(record, kafka_queue_timeout).await {
+                            Ok(_) => {
+                                BILLING_EVENTS_SENT.inc();
+                                BILLING_EVENT_SEND_DURATION.observe(start.elapsed().as_secs_f64());
+                            }
+                            Err((e, _)) => {
+                                BILLING_EVENT_SEND_ERRORS.inc();
+                                error!("Kafka delivery failed: {:?}", e) },
                         }
                     }
-                    Err(e) => error!("Failed to serialize Kafka payload: {:?}", e),
+                    Err(e) => {
+                        BILLING_EVENT_SEND_ERRORS.inc();
+                        error!("Failed to serialize Kafka payload: {:?}", e)
+                    },
                 }
             }
         });

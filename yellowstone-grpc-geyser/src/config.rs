@@ -215,6 +215,14 @@ pub struct ConfigGrpc {
     #[serde(default)]
     pub billing_kafka_password: Option<String>,
     #[serde(
+        default = "ConfigGrpc::default_billing_kafka_send_queue_timeout",
+        with = "humantime_serde"
+    )]
+    pub billing_kafka_send_queue_timeout: Duration,
+    #[serde(
+        default = "ConfigGrpc::default_billing_kafka_send_channel_size",
+    )]
+    pub billing_kafka_send_channel_size: usize,    #[serde(
         default = "ConfigGrpc::default_billing_ticker_interval",
         with = "humantime_serde"
     )]
@@ -281,6 +289,14 @@ impl ConfigGrpc {
 
     const fn default_billing_ticker_interval() -> Duration {
         Duration::from_secs(10)
+    }
+
+    const fn default_billing_kafka_send_queue_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+
+    const fn default_billing_kafka_send_channel_size() -> usize {
+        10_000
     }
 
     const fn default_redis_cache_ttl() -> Duration {

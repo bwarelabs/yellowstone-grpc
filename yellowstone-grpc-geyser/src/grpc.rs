@@ -442,6 +442,8 @@ impl GrpcService {
             config.billing_kafka_username.as_deref(),
             config.billing_kafka_password.as_deref(),
             config.billing_kafka_topic.clone(),
+            config.billing_kafka_send_queue_timeout,
+            config.billing_kafka_send_channel_size,
         );
 
         let quota_cache = Arc::new(
