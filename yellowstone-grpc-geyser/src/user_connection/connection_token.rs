@@ -1,12 +1,6 @@
 use {
-    std::{
-        sync::Arc,
-    },
-    log::info,
+    crate::user_connection::connection_manager::ConnectionManager, log::info, std::sync::Arc,
     tokio::sync::watch,
-    crate::{
-        user_connection::connection_manager::ConnectionManager,
-    }
 };
 
 #[derive(Clone)]
@@ -37,7 +31,6 @@ impl ConnectionToken {
     }
 }
 
-
 impl Drop for ConnectionToken {
     fn drop(&mut self) {
         // If only one receiver left (i.e. this one), remove from DashMap
@@ -47,5 +40,3 @@ impl Drop for ConnectionToken {
         }
     }
 }
-
-

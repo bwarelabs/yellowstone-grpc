@@ -1,13 +1,13 @@
 use {
-    deadpool_redis::{Config, Pool, Connection, Runtime},
+    anyhow::Result,
+    deadpool_redis::redis::AsyncCommands,
+    deadpool_redis::{Config, Connection, Pool, Runtime},
+    log::error,
     moka::future::Cache,
     std::{
         sync::Arc,
         time::{Duration, Instant},
     },
-    anyhow::Result,
-    deadpool_redis::redis::AsyncCommands,
-    log::error,
 };
 
 #[derive(Clone)]
@@ -94,7 +94,10 @@ where
                         let _ = cache.insert(key, cached).await;
                     }
                     Err(e) => {
-                        error!("Background Redis refresh error for key {}: {:?}", redis_key, e);
+                        error!(
+                            "Background Redis refresh error for key {}: {:?}",
+                            redis_key, e
+                        );
                     }
                 }
             }

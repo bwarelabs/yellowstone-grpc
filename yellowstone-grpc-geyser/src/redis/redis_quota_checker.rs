@@ -1,5 +1,4 @@
-use
-{
+use {
     crate::{
         redis::refreshing_fallback_cache::RefreshingFallbackCache,
         user_connection::connection_manager::ConnectionManager,

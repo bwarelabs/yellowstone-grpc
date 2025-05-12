@@ -1,13 +1,8 @@
 use {
-  std::sync::Arc,
-  dashmap::{
-      DashMap,
-      mapref::entry::Entry,
-  },
+    crate::user_connection::connection_token::ConnectionToken,
+    dashmap::{mapref::entry::Entry, DashMap},
+    std::sync::Arc,
     tokio::sync::watch,
-  crate::{
-      user_connection::connection_token::ConnectionToken
-  },
 };
 
 #[derive(Debug, Clone)]

@@ -214,16 +214,32 @@ pub struct ConfigGrpc {
     pub billing_kafka_username: Option<String>,
     #[serde(default)]
     pub billing_kafka_password: Option<String>,
-    #[serde(default = "ConfigGrpc::default_billing_ticker_interval", with = "humantime_serde")]
+    #[serde(
+        default = "ConfigGrpc::default_billing_ticker_interval",
+        with = "humantime_serde"
+    )]
     pub billing_ticker_interval: Duration,
     pub redis_url: String,
     pub redis_prefix: String,
-    #[serde(default = "ConfigGrpc::default_redis_cache_ttl", with = "humantime_serde")]
+    #[serde(
+        default = "ConfigGrpc::default_redis_cache_ttl",
+        with = "humantime_serde"
+    )]
     pub redis_cache_ttl: Duration,
     #[serde(default = "ConfigGrpc::default_redis_cache_capacity")]
     pub redis_cache_capacity: usize,
-    #[serde(default = "ConfigGrpc::default_redis_background_buffer", with = "humantime_serde")]
+    /// Redis cache will background fetch after `redis_cache_ttl` + `redis_background_buffer`
+    #[serde(
+        default = "ConfigGrpc::default_redis_background_buffer",
+        with = "humantime_serde"
+    )]
     pub redis_background_buffer: Duration,
+    /// Quota checker will check redis every `redis_check_interval`
+    #[serde(
+        default = "ConfigGrpc::default_quota_check_interval",
+        with = "humantime_serde"
+    )]
+    pub quota_check_interval: Duration,
 }
 
 impl ConfigGrpc {
@@ -277,6 +293,10 @@ impl ConfigGrpc {
 
     const fn default_redis_background_buffer() -> Duration {
         Duration::from_secs(15)
+    }
+
+    const fn default_quota_check_interval() -> Duration {
+        Duration::from_secs(10)
     }
 }
 

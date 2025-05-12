@@ -1,13 +1,13 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
-        user_connection::connection_manager::ConnectionManager,
         kafka_producer_service::{BillingEvent, KafkaProducerService},
         metrics::{self, DebugClientMessage},
         redis::{
             redis_quota_checker::start_redis_quota_checker,
             refreshing_fallback_cache::RefreshingFallbackCache,
         },
+        user_connection::connection_manager::ConnectionManager,
         version::GrpcVersionInfo,
     },
     anyhow::Context,
@@ -451,7 +451,6 @@ impl GrpcService {
                 config.redis_cache_ttl,
                 config.redis_cache_capacity,
                 config.redis_background_buffer,
-                // TODO : move capped to default configs
                 Arc::new(|opt| matches!(opt.as_deref(), Some("CAPPED"))),
             )
             .await
@@ -463,8 +462,7 @@ impl GrpcService {
         tokio::spawn(start_redis_quota_checker(
             connection_manager.clone(),
             quota_cache.clone(),
-            // TODO - move to config
-            Duration::from_secs(10), // check every 10s
+            config.quota_check_interval,
         ));
 
         // Create Server
@@ -907,7 +905,6 @@ impl GrpcService {
     ) {
         let mut bytes_sent_by_type: HashMap<&'static str, u64> = HashMap::new();
 
-        // TODO: make sure this doesn t hand somehow and keeps the client loop running by itself
         let mut billing_ticker = tokio::time::interval(billing_ticker_interval);
 
         let mut filter = Filter::default();
