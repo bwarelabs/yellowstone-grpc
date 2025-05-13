@@ -234,7 +234,10 @@ pub struct ConfigGrpc {
         with = "humantime_serde"
     )]
     pub redis_cache_ttl: Duration,
-    #[serde(default = "ConfigGrpc::default_redis_cache_capacity")]
+    #[serde(
+        default = "ConfigGrpc::default_redis_cache_capacity",
+        deserialize_with = "deserialize_int_str"
+    )]
     pub redis_cache_capacity: usize,
     /// Redis cache will background fetch after `redis_cache_ttl` + `redis_background_buffer`
     #[serde(
@@ -248,6 +251,12 @@ pub struct ConfigGrpc {
         with = "humantime_serde"
     )]
     pub quota_check_interval: Duration,
+    /// Quota checker will check redis in batches of `quota_check_batch_size`
+    #[serde(
+        default = "ConfigGrpc::default_quota_check_batch_size",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub quota_check_batch_size: usize,
 }
 
 impl ConfigGrpc {
@@ -313,6 +322,10 @@ impl ConfigGrpc {
 
     const fn default_quota_check_interval() -> Duration {
         Duration::from_secs(10)
+    }
+
+    const fn default_quota_check_batch_size() -> usize {
+        1_000
     }
 }
 

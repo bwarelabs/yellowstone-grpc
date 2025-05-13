@@ -7,12 +7,34 @@ use {
     std::sync::Arc,
     time::OffsetDateTime,
     tokio::time::{interval, Duration},
+    log::{error, info},
 };
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct QuotaKey {
+    year_month: String,
+    team_id: String,
+}
+
+impl QuotaKey {
+    fn to_suffix(&self) -> String {
+        format!("{}:{}", self.year_month, self.team_id)
+    }
+
+    fn from_suffix(suffix: &str) -> Option<Self> {
+        let mut parts = suffix.splitn(2, ':');
+        let year_month = parts.next()?.to_string();
+        let team_id = parts.next()?.to_string();
+        Some(Self { year_month, team_id })
+    }
+}
+
 
 pub async fn start_redis_quota_checker(
     manager: Arc<ConnectionManager>,
     quota_cache: Arc<RefreshingFallbackCache<bool>>,
     check_interval: Duration,
+    quota_check_batch_size: usize,
 ) {
     let mut ticker = interval(check_interval);
 
@@ -25,22 +47,47 @@ pub async fn start_redis_quota_checker(
         let teams = manager.list_active_teams();
         TEAMS_CHECKED.inc_by(teams.len() as u64);
 
-        for team_id in teams {
-            let now = OffsetDateTime::now_utc();
-            let year_month = format!("{:04}-{:02}", now.year(), now.month() as u8);
-            let key_suffix = format!("{}:{}", year_month, team_id);
+        let now = OffsetDateTime::now_utc();
+        let year_month = format!("{:04}-{:02}", now.year(), now.month() as u8);
 
-            match quota_cache.get_or_refresh(&key_suffix).await {
-                Ok(true) => {
-                    TEAMS_CAPPED.inc();
-                    log::info!("Team {} is capped, shutting down connection", team_id);
-                    manager.shutdown_client(&team_id);
-                }
-                Ok(false) => {
-                    // Team is fine, do nothing
-                }
-                Err(e) => {
-                    log::error!("Failed to check quota for team {}: {:?}", team_id, e);
+        for team_chunk in teams.chunks(quota_check_batch_size) {
+            let quota_keys: Vec<QuotaKey> = team_chunk
+                .iter()
+                .map(|team_id| QuotaKey {
+                    year_month: year_month.clone(),
+                    team_id: team_id.clone(),
+                })
+                .collect();
+
+            let key_suffixes: Vec<String> = quota_keys.iter().map(QuotaKey::to_suffix).collect();
+
+            let results = quota_cache.get_many_or_refresh(&key_suffixes).await;
+
+            for (key_suffix, result) in results {
+                let Some(quota_key) = QuotaKey::from_suffix(&key_suffix) else {
+                    error!("Invalid quota key format: {}", key_suffix);
+                    continue;
+                };
+
+                match result {
+                    Ok(true) => {
+                        TEAMS_CAPPED.inc();
+                        info!(
+                            "Team {} is capped, shutting down connection",
+                            quota_key.team_id
+                        );
+                        manager.shutdown_client(&quota_key.team_id);
+                    }
+                    Ok(false) => {
+                        // Not capped — do nothing
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to check quota for team {}: {:?}",
+                            quota_key.team_id,
+                            e
+                        );
+                    }
                 }
             }
         }

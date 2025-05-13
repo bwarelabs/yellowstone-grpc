@@ -465,6 +465,7 @@ impl GrpcService {
             connection_manager.clone(),
             quota_cache.clone(),
             config.quota_check_interval,
+            config.quota_check_batch_size,
         ));
 
         // Create Server
@@ -1076,7 +1077,6 @@ impl GrpcService {
                     }
                     // If a billing ticker is received, it will be used to update the billing
                     _ = billing_ticker.tick() => {
-                        info!("Billing ticker for client #{id}");
                         for (message_type, size) in bytes_sent_by_type.drain() {
                             let event = BillingEvent {
                                 app_id: app_id.clone(),
