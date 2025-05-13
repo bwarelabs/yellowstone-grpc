@@ -12,7 +12,7 @@ use {
         server::conn::auto::Builder as ServerBuilder,
     },
     log::{error, info},
-    prometheus::{IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder},
+    prometheus::{IntCounterVec, IntGauge, IntCounter, Histogram,  HistogramOpts, IntGaugeVec, Opts, Registry, TextEncoder},
     solana_sdk::clock::Slot,
     std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
@@ -66,6 +66,34 @@ lazy_static::lazy_static! {
     static ref MISSED_STATUS_MESSAGE: IntCounterVec = IntCounterVec::new(
         Opts::new("missed_status_message_total", "Number of missed messages by commitment"),
         &["status"]
+    ).unwrap();
+
+    pub static ref BILLING_EVENTS_SENT: IntCounter = IntCounter::new(
+        "billing_events_sent_total", "Total number of billing events successfully sent"
+    ).unwrap();
+
+    pub static ref BILLING_EVENT_SEND_ERRORS: IntCounter = IntCounter::new(
+        "billing_event_send_errors_total", "Number of billing events that failed to send"
+    ).unwrap();
+
+    pub static ref BILLING_EVENT_SEND_DURATION: Histogram = Histogram::with_opts(
+        HistogramOpts::from(Opts::new("billing_event_send_duration_seconds", "Duration to send billing events"))
+    ).unwrap();
+
+    pub static ref QUOTA_CHECKER_RUNS: IntCounter = IntCounter::new(
+        "quota_checker_runs_total", "Number of times the quota checker loop has run"
+    ).unwrap();
+
+    pub static ref TEAMS_CHECKED: IntCounter = IntCounter::new(
+        "teams_checked_total", "Number of teams scanned per quota loop"
+    ).unwrap();
+
+    pub static ref TEAMS_CAPPED: IntCounter = IntCounter::new(
+        "teams_capped_total", "Number of teams capped in quota loop"
+    ).unwrap();
+
+    pub static ref QUOTA_CHECKER_DURATION: Histogram = Histogram::with_opts(
+        HistogramOpts::from(Opts::new("quota_checker_duration_seconds", "Quota checker loop duration"))
     ).unwrap();
 }
 
@@ -199,6 +227,13 @@ impl PrometheusService {
             register!(CONNECTIONS_TOTAL);
             register!(SUBSCRIPTIONS_TOTAL);
             register!(MISSED_STATUS_MESSAGE);
+            register!(BILLING_EVENTS_SENT);
+            register!(BILLING_EVENT_SEND_ERRORS);
+            register!(BILLING_EVENT_SEND_DURATION);
+            register!(QUOTA_CHECKER_RUNS);
+            register!(TEAMS_CHECKED);
+            register!(TEAMS_CAPPED);
+            register!(QUOTA_CHECKER_DURATION);
 
             VERSION
                 .with_label_values(&[

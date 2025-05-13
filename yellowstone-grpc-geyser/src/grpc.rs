@@ -1,11 +1,18 @@
 use {
     crate::{
         config::{ConfigGrpc, ConfigTokio},
+        kafka_producer_service::{BillingEvent, KafkaProducerService},
         metrics::{self, DebugClientMessage},
+        redis::{
+            redis_quota_checker::start_redis_quota_checker,
+            refreshing_fallback_cache::RefreshingFallbackCache,
+        },
+        user_connection::connection_manager::ConnectionManager,
         version::GrpcVersionInfo,
     },
     anyhow::Context,
     log::{error, info},
+    prost::Message as ProstMessage,
     prost_types::Timestamp,
     solana_sdk::{
         clock::{Slot, MAX_RECENT_BLOCKHASHES},
@@ -344,6 +351,9 @@ pub struct GrpcService {
     replay_first_available_slot: Option<Arc<AtomicU64>>,
     debug_clients_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
     filter_names: Arc<Mutex<FilterNames>>,
+    billing_tx: mpsc::Sender<BillingEvent>,
+    billing_ticker_interval: Duration,
+    connection_manager: Arc<ConnectionManager>,
 }
 
 impl GrpcService {
@@ -430,6 +440,37 @@ impl GrpcService {
             config.filter_names_cleanup_interval,
         )));
 
+        let (kafka_service, kafka_task) = KafkaProducerService::new(
+            &config.billing_kafka_brokers,
+            config.billing_kafka_username.as_deref(),
+            config.billing_kafka_password.as_deref(),
+            config.billing_kafka_topic.clone(),
+            config.billing_kafka_send_queue_timeout,
+            config.billing_kafka_send_channel_size,
+        );
+
+        let quota_cache = Arc::new(
+            RefreshingFallbackCache::new(
+                &config.redis_url,
+                config.redis_prefix.clone(),
+                config.redis_cache_ttl,
+                config.redis_cache_capacity,
+                config.redis_background_buffer,
+                Arc::new(|opt| matches!(opt.as_deref(), Some("CAPPED"))),
+            )
+            .await
+            .expect("failed to initialize quota cache"),
+        );
+
+        let connection_manager = Arc::new(ConnectionManager::new());
+
+        tokio::spawn(start_redis_quota_checker(
+            connection_manager.clone(),
+            quota_cache.clone(),
+            config.quota_check_interval,
+            config.quota_check_batch_size,
+        ));
+
         // Create Server
         let max_decoding_message_size = config.max_decoding_message_size;
         let mut service = GeyserServer::new(Self {
@@ -444,6 +485,9 @@ impl GrpcService {
             replay_first_available_slot: replay_first_available_slot.clone(),
             debug_clients_tx,
             filter_names,
+            billing_tx: kafka_service.sender.clone(),
+            billing_ticker_interval: config.billing_ticker_interval,
+            connection_manager,
         })
         .max_decoding_message_size(max_decoding_message_size);
         for encoding in config.compression.accept {
@@ -503,6 +547,17 @@ impl GrpcService {
                 .add_service(service)
                 .serve_with_incoming_shutdown(incoming, shutdown_grpc.notified())
                 .await
+                .ok();
+        });
+
+        let shutdown_clone = Arc::clone(&shutdown);
+        tokio::spawn(async move {
+            shutdown_clone.notified().await;
+
+            match kafka_task.await {
+                Ok(_) => info!("Kafka task shut down cleanly."),
+                Err(e) => error!("Kafka task shutdown with error: {:?}", e),
+            }
         });
 
         Ok((snapshot_tx, messages_tx, shutdown))
@@ -855,7 +910,17 @@ impl GrpcService {
         replay_stored_slots_tx: Option<mpsc::Sender<ReplayStoredSlotsRequest>>,
         debug_client_tx: Option<mpsc::UnboundedSender<DebugClientMessage>>,
         drop_client: impl FnOnce(),
+        team_id: String,
+        app_id: String,
+        network: String,
+        billing_tx: mpsc::Sender<BillingEvent>,
+        billing_ticker_interval: Duration,
+        connection_manager: Arc<ConnectionManager>,
     ) {
+        let mut bytes_sent_by_type: HashMap<&'static str, u64> = HashMap::new();
+
+        let mut billing_ticker = tokio::time::interval(billing_ticker_interval);
+
         let mut filter = Filter::default();
         metrics::update_subscriptions(&endpoint, None, Some(&filter));
 
@@ -879,6 +944,9 @@ impl GrpcService {
             )
             .await;
         }
+
+        let mut connection_token = connection_manager.register_team(team_id.clone());
+        let shutdown_rx = connection_token.shutdown_rx();
 
         if is_alive {
             'outer: loop {
@@ -967,6 +1035,7 @@ impl GrpcService {
                             }
                         }
                     }
+                    // If a message is received, it will be filtered and sent to the client
                     message = messages_rx.recv() => {
                         let (commitment, messages) = match message {
                             Ok((commitment, messages)) => (commitment, messages),
@@ -985,6 +1054,12 @@ impl GrpcService {
                         if commitment == filter.get_commitment_level() {
                             for (_msgid, message) in messages.iter() {
                                 for message in filter.get_updates(message, Some(commitment)) {
+                                    let message_type = message.message.subscription_type();
+                                    if message_type != "ping" && message_type != "pong" {
+                                        let size = ProstMessage::encoded_len(&message) as u64;
+                                        *bytes_sent_by_type.entry(message_type).or_default() += size;
+                                    }
+
                                     match stream_tx.try_send(Ok(message)) {
                                         Ok(()) => {}
                                         Err(mpsc::error::TrySendError::Full(_)) => {
@@ -1009,6 +1084,40 @@ impl GrpcService {
                                     DebugClientMessage::maybe_send(&debug_client_tx, || DebugClientMessage::UpdateSlot { id, slot: slot_message.slot });
                                 }
                             }
+                        }
+                    }
+                    // If a billing ticker is received, it will be used to update the billing
+                    _ = billing_ticker.tick() => {
+                        for (message_type, size) in bytes_sent_by_type.drain() {
+                            let event = BillingEvent {
+                                app_id: app_id.clone(),
+                                team_id: team_id.clone(),
+                                eth_method: message_type.to_string(),
+                                eth_network: network.clone(),
+                                subscription_id: format!("grpc-client-{}", id),
+                                subscription_type: message_type.to_string(),
+                                log_source: "grpc".to_string(),
+                                response_content_length: size,
+                            };
+
+                            if let Err(err) = billing_tx.try_send(event) {
+                                error!("Billing channel full or closed for client #{id}: {err}");
+                            }
+                        }
+                    }
+
+                    changed = shutdown_rx.changed() => {
+                        match changed {
+                            Ok(_) if *shutdown_rx.borrow() => {
+                                info!("Shutdown signal received for client #{id} - geyser task");
+                                let _ = stream_tx.send(Err(Status::resource_exhausted("connection closed: quota exceeded"))).await;
+                                break 'outer;
+                            }
+                            Err(_) => {
+                                info!("Shutdown sender dropped for client #{id}");
+                                break 'outer;
+                            }
+                            _ => {} // Changed but still `false` — keep going
                         }
                     }
                 }
@@ -1114,6 +1223,42 @@ impl Geyser for GrpcService {
         let ping_stream_tx = stream_tx.clone();
         let ping_client_tx = client_tx.clone();
         let ping_exit = Arc::clone(&notify_exit1);
+
+        let team_id = request
+            .metadata()
+            .get("x-alchemy-team-id")
+            .ok_or(Status::invalid_argument("missing team id"))?
+            .to_str()
+            .map_err(|_| Status::invalid_argument("invalid team id"))?
+            .to_string();
+
+        let app_id = request
+            .metadata()
+            .get("x-alchemy-app-id")
+            .ok_or(Status::invalid_argument("missing app id"))?
+            .to_str()
+            .map_err(|_| Status::invalid_argument("invalid app id"))?
+            .to_string();
+
+        let network = match request
+            .metadata()
+            .get("x-alchemy-network")
+            .and_then(|val| val.to_str().ok())
+        {
+            Some("SOLANA_MAINNET") => "SOLANA_MAINNET".to_string(),
+            Some("SOLANA_DEVNET") => "SOLANA_DEVNET".to_string(),
+            Some(other) => {
+                return Err(Status::invalid_argument(format!(
+                    "invalid network: {}",
+                    other
+                )));
+            }
+            None => {
+                return Err(Status::invalid_argument("missing network"));
+            }
+        };
+
+        // Spawns the task that sends ping messages to the client
         tokio::spawn(async move {
             let exit = ping_exit.notified();
             tokio::pin!(exit);
@@ -1149,6 +1294,9 @@ impl Geyser for GrpcService {
         let incoming_stream_tx = stream_tx.clone();
         let incoming_client_tx = client_tx;
         let incoming_exit = Arc::clone(&notify_exit2);
+
+        // Spawns the task that listens for messages from the client and updates the filters
+        // on the streaming task
         tokio::spawn(async move {
             let exit = incoming_exit.notified();
             tokio::pin!(exit);
@@ -1201,6 +1349,8 @@ impl Geyser for GrpcService {
             }
         });
 
+        let connection_manager = Arc::clone(&self.connection_manager);
+        // Spawns the task that listens for messages from solana RPC
         tokio::spawn(Self::client_loop(
             id,
             endpoint,
@@ -1214,6 +1364,12 @@ impl Geyser for GrpcService {
                 notify_exit1.notify_one();
                 notify_exit2.notify_one();
             },
+            team_id,
+            app_id,
+            network,
+            self.billing_tx.clone(),
+            self.billing_ticker_interval,
+            connection_manager,
         ));
 
         Ok(Response::new(ReceiverStream::new(stream_rx)))
