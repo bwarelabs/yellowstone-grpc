@@ -26,6 +26,10 @@ use {
         sync::Arc,
         time::SystemTime,
     },
+    solana_nats_geyser_protobufs::{
+        account::AccountMessage,
+        slot::SlotStatus as NatsSlotStatus,
+    }
 };
 
 type FromUpdateOneofResult<T> = Result<T, &'static str>;
@@ -102,6 +106,20 @@ impl From<SlotStatusProto> for SlotStatus {
             SlotStatusProto::SlotCompleted => Self::Completed,
             SlotStatusProto::SlotCreatedBank => Self::CreatedBank,
             SlotStatusProto::SlotDead => Self::Dead,
+        }
+    }
+}
+
+impl From<NatsSlotStatus> for SlotStatus {
+    fn from(status: NatsSlotStatus) -> Self {
+        match status {
+            NatsSlotStatus::Processed => Self::Processed,
+            NatsSlotStatus::Confirmed => Self::Confirmed,
+            NatsSlotStatus::Rooted => Self::Finalized,
+            NatsSlotStatus::FirstShredReceived => Self::FirstShredReceived,
+            NatsSlotStatus::Completed => Self::Completed,
+            NatsSlotStatus::CreatedBank => Self::CreatedBank,
+            NatsSlotStatus::Dead(_error) => Self::Dead,
         }
     }
 }
@@ -211,6 +229,19 @@ impl MessageAccountInfo {
         }
     }
 
+    pub fn from_nats(info: AccountMessage) -> Self {
+        Self {
+            pubkey: Pubkey::try_from(info.pubkey).expect("valid Pubkey"),
+            lamports: info.lamports,
+            owner: Pubkey::try_from(info.owner).expect("valid Pubkey"),
+            executable: info.executable,
+            rent_epoch: info.rent_epoch,
+            data: info.data.into(),
+            write_version: info.write_version,
+            txn_signature: info.txn.map(|txn| *txn.signature()),
+        }
+    }
+
     pub fn from_update_oneof(msg: SubscribeUpdateAccountInfo) -> FromUpdateOneofResult<Self> {
         Ok(Self {
             pubkey: Pubkey::try_from(msg.pubkey.as_slice()).map_err(|_| "invalid pubkey length")?,
@@ -242,6 +273,15 @@ impl MessageAccount {
     pub fn from_geyser(info: &ReplicaAccountInfoV3<'_>, slot: Slot, is_startup: bool) -> Self {
         Self {
             account: Arc::new(MessageAccountInfo::from_geyser(info)),
+            slot,
+            is_startup,
+            created_at: Timestamp::from(SystemTime::now()),
+        }
+    }
+
+    pub fn from_nats(info: AccountMessage, slot: u64, is_startup: bool) -> Self {
+        Self {
+            account: Arc::new(MessageAccountInfo::from_nats(info)),
             slot,
             is_startup,
             created_at: Timestamp::from(SystemTime::now()),

@@ -6,6 +6,7 @@ pub mod plugin;
 pub mod redis;
 pub mod user_connection;
 pub mod version;
+pub mod nats_geyser_plugin_interface;
 
 pub fn get_thread_name() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};

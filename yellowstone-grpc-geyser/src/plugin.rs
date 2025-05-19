@@ -1,13 +1,15 @@
+use solana_nats_geyser_protobufs::slot::SlotMessage;
 use {
     crate::{
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
+        nats_geyser_plugin_interface::NatsGeyserPlugin
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
         ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
-        SlotStatus,
+        SlotStatus as GeyserSlotStatus,
     },
     std::{
         concat, env,
@@ -24,6 +26,9 @@ use {
     yellowstone_grpc_proto::plugin::message::{
         Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
     },
+    solana_nats_geyser_protobufs::{
+        account::AccountMessage as NatsAccountMessage,
+    }
 };
 
 #[derive(Debug)]
@@ -59,7 +64,7 @@ impl Plugin {
     }
 }
 
-impl GeyserPlugin for Plugin {
+impl NatsGeyserPlugin for Plugin {
     fn name(&self) -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
     }
@@ -134,41 +139,13 @@ impl GeyserPlugin for Plugin {
 
     fn update_account(
         &self,
-        account: ReplicaAccountInfoVersions,
-        slot: u64,
-        is_startup: bool,
+        account: NatsAccountMessage,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let account = match account {
-                ReplicaAccountInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_3(info) => info,
-            };
-
-            if is_startup {
-                if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
-                    let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-                    match channel.send(Box::new(message)) {
-                        Ok(()) => metrics::message_queue_size_inc(),
-                        Err(_) => {
-                            if !inner.snapshot_channel_closed.swap(true, Ordering::Relaxed) {
-                                log::error!(
-                                    "failed to send message to startup queue: channel closed"
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-                inner.send_message(message);
-            }
+            let slot = account.slot;
+            let message =
+                Message::Account(MessageAccount::from_nats(account, slot, false));
+            inner.send_message(message);
 
             Ok(())
         })
@@ -183,14 +160,18 @@ impl GeyserPlugin for Plugin {
 
     fn update_slot_status(
         &self,
-        slot: u64,
-        parent: Option<u64>,
-        status: &SlotStatus,
+        slot: SlotMessage
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            let SlotMessage {
+                slot,
+                parent,
+                status
+            } = slot;
+            let geyser_slot_status = GeyserSlotStatus::from(status);
+            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, &geyser_slot_status));
             inner.send_message(message);
-            metrics::update_slot_status(status, slot);
+            metrics::update_slot_status(&geyser_slot_status, slot);
             Ok(())
         })
     }
