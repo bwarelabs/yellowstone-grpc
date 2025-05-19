@@ -60,6 +60,17 @@ pub mod convert_to {
             InnerInstruction, InnerInstructions, Reward, RewardType, TransactionStatusMeta,
             TransactionTokenBalance,
         },
+        solana_nats_geyser_protobufs::{
+            transaction::{
+                SanitizedTransaction as NatsSanitizedTransaction,
+                SanitizedMessage as NatsSanitizedMessage,
+                LegacyMessage as NatsLegacyMessage,
+                LoadedMessage as NatsLoadedMessage,
+                TransactionStatusMeta as NatsTransactionStatusMeta,
+                TransactionTokenBalance as NatsTransactionTokenBalance,
+            },
+
+        }
     };
 
     pub fn create_transaction(tx: &SanitizedTransaction) -> proto::Transaction {
@@ -70,6 +81,17 @@ pub mod convert_to {
                 .map(|signature| <Signature as AsRef<[u8]>>::as_ref(signature).into())
                 .collect(),
             message: Some(create_message(tx.message())),
+        }
+    }
+
+    pub fn create_transaction_from_nats(tx: NatsSanitizedTransaction) -> proto::Transaction {
+        proto::Transaction {
+            signatures: tx
+                .signatures()
+                .iter()
+                .map(|signature| <Signature as AsRef<[u8]>>::as_ref(signature).into())
+                .collect(),
+            message: Some(create_message_from_nats(tx.message())),
         }
     }
 
@@ -84,6 +106,27 @@ pub mod convert_to {
                 address_table_lookups: vec![],
             },
             SanitizedMessage::V0(LoadedMessage { message, .. }) => proto::Message {
+                header: Some(create_header(&message.header)),
+                account_keys: create_pubkeys(&message.account_keys),
+                recent_blockhash: message.recent_blockhash.to_bytes().into(),
+                instructions: create_instructions(&message.instructions),
+                versioned: true,
+                address_table_lookups: create_lookups(&message.address_table_lookups),
+            },
+        }
+    }
+
+    pub fn create_message_from_nats(message: &NatsSanitizedMessage) -> proto::Message {
+        match message {
+            NatsSanitizedMessage::Legacy(NatsLegacyMessage { message, .. }) => proto::Message {
+                header: Some(create_header(&message.header)),
+                account_keys: create_pubkeys(&message.account_keys),
+                recent_blockhash: message.recent_blockhash.to_bytes().into(),
+                instructions: create_instructions(&message.instructions),
+                versioned: false,
+                address_table_lookups: vec![],
+            },
+            NatsSanitizedMessage::V0(NatsLoadedMessage { message, .. }) => proto::Message {
                 header: Some(create_header(&message.header)),
                 account_keys: create_pubkeys(&message.account_keys),
                 recent_blockhash: message.recent_blockhash.to_bytes().into(),
@@ -190,6 +233,62 @@ pub mod convert_to {
         }
     }
 
+    pub fn create_transaction_meta_nats(meta: &NatsTransactionStatusMeta) -> proto::TransactionStatusMeta {
+        let NatsTransactionStatusMeta {
+            status,
+            fee,
+            pre_balances,
+            post_balances,
+            inner_instructions,
+            log_messages,
+            pre_token_balances,
+            post_token_balances,
+            rewards,
+            loaded_addresses,
+            return_data,
+            compute_units_consumed,
+        } = meta;
+        let err = create_transaction_error(status);
+        let inner_instructions_none = inner_instructions.is_none();
+        let inner_instructions = inner_instructions
+            .as_deref()
+            .map(create_inner_instructions_vec)
+            .unwrap_or_default();
+        let log_messages_none = log_messages.is_none();
+        let log_messages = log_messages.clone().unwrap_or_default();
+        let pre_token_balances = pre_token_balances
+            .as_deref()
+            .map(create_token_balances_from_nats)
+            .unwrap_or_default();
+        let post_token_balances = post_token_balances
+            .as_deref()
+            .map(create_token_balances_from_nats)
+            .unwrap_or_default();
+        let rewards = rewards.as_deref().map(create_rewards).unwrap_or_default();
+        let loaded_writable_addresses = create_pubkeys(&loaded_addresses.writable);
+        let loaded_readonly_addresses = create_pubkeys(&loaded_addresses.readonly);
+
+        proto::TransactionStatusMeta {
+            err,
+            fee: *fee,
+            pre_balances: pre_balances.clone(),
+            post_balances: post_balances.clone(),
+            inner_instructions,
+            inner_instructions_none,
+            log_messages,
+            log_messages_none,
+            pre_token_balances,
+            post_token_balances,
+            rewards,
+            loaded_writable_addresses,
+            loaded_readonly_addresses,
+            return_data: return_data.as_ref().map(create_return_data),
+            return_data_none: return_data.is_none(),
+            compute_units_consumed: *compute_units_consumed,
+        }
+    }
+
+
     pub fn create_transaction_error(
         status: &Result<(), TransactionError>,
     ) -> Option<proto::TransactionError> {
@@ -231,6 +330,10 @@ pub mod convert_to {
         balances.iter().map(create_token_balance).collect()
     }
 
+    pub fn create_token_balances_from_nats(balances: &[NatsTransactionTokenBalance]) -> Vec<proto::TokenBalance> {
+        balances.iter().map(create_token_balance_from_nats).collect()
+    }
+
     pub fn create_token_balance(balance: &TransactionTokenBalance) -> proto::TokenBalance {
         proto::TokenBalance {
             account_index: balance.account_index as u32,
@@ -246,7 +349,22 @@ pub mod convert_to {
         }
     }
 
-    pub fn create_rewards_obj(rewards: &[Reward], num_partitions: Option<u64>) -> proto::Rewards {
+    pub fn create_token_balance_from_nats(balance: &NatsTransactionTokenBalance) -> proto::TokenBalance {
+        proto::TokenBalance {
+            account_index: balance.account_index as u32,
+            mint: balance.mint.clone(),
+            ui_token_amount: Some(proto::UiTokenAmount {
+                ui_amount: balance.ui_token_amount.ui_amount.unwrap_or_default(),
+                decimals: balance.ui_token_amount.decimals as u32,
+                amount: balance.ui_token_amount.amount.clone(),
+                ui_amount_string: balance.ui_token_amount.ui_amount_string.clone(),
+            }),
+            owner: balance.owner.clone(),
+            program_id: balance.program_id.clone(),
+        }
+    }
+
+        pub fn create_rewards_obj(rewards: &[Reward], num_partitions: Option<u64>) -> proto::Rewards {
         proto::Rewards {
             rewards: create_rewards(rewards),
             num_partitions: num_partitions.map(create_num_partitions),

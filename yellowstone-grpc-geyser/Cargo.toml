@@ -1,3 +1,5 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "yellowstone-grpc-geyser"
 version = "6.1.0"
@@ -53,8 +55,9 @@ rdkafka = { version = "0.37.0", features = ["ssl", "sasl"] }
 time = { version = "0.3.41", features = ["macros", "serde"] }
 dashmap = "7.0.0-rc2"
 moka = { version = "=0.5.4", features = ["future"] }
-redis = { version = "0.30.0", features = ["aio", "connection-manager", "tokio-comp"] }
+redis = { version = "0.31.0", features = ["aio", "connection-manager", "tokio-comp"] }
 deadpool-redis = "0.20.0"
+solana-nats-geyser-protobufs = { git = "ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git", branch = "main" }
 
 [build-dependencies]
 anyhow = { workspace = true }

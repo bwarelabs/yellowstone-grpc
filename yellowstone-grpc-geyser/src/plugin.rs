@@ -1,4 +1,4 @@
-use solana_nats_geyser_protobufs::slot::SlotMessage;
+#[allow(unused_imports)]
 use {
     crate::{
         config::Config,
@@ -7,14 +7,14 @@ use {
         nats_geyser_plugin_interface::NatsGeyserPlugin
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
-        ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
+        GeyserPlugin, GeyserPluginError,
+        Result as PluginResult,
         SlotStatus as GeyserSlotStatus,
     },
     std::{
         concat, env,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool},
             Arc, Mutex,
         },
         time::Duration,
@@ -28,6 +28,10 @@ use {
     },
     solana_nats_geyser_protobufs::{
         account::AccountMessage as NatsAccountMessage,
+        slot::SlotMessage as NatsSlotMessage,
+        transaction::TransactionMessage as NatsTransactionMessage,
+        entry::EntryMessage as NatsEntryMessage,
+        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
     }
 };
 
@@ -35,6 +39,7 @@ use {
 pub struct PluginInner {
     runtime: Runtime,
     snapshot_channel: Mutex<Option<crossbeam_channel::Sender<Box<Message>>>>,
+    #[allow(dead_code)]
     snapshot_channel_closed: AtomicBool,
     grpc_channel: mpsc::UnboundedSender<Message>,
     grpc_shutdown: Arc<Notify>,
@@ -160,10 +165,10 @@ impl NatsGeyserPlugin for Plugin {
 
     fn update_slot_status(
         &self,
-        slot: SlotMessage
+        slot: NatsSlotMessage
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let SlotMessage {
+            let NatsSlotMessage {
                 slot,
                 parent,
                 status
@@ -178,57 +183,29 @@ impl NatsGeyserPlugin for Plugin {
 
     fn notify_transaction(
         &self,
-        transaction: ReplicaTransactionInfoVersions<'_>,
-        slot: u64,
+        transaction: NatsTransactionMessage,
     ) -> PluginResult<()> {
+        let slot = transaction.slot;
         self.with_inner(|inner| {
-            let transaction = match transaction {
-                ReplicaTransactionInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaTransactionInfoVersions::V0_0_2(info) => info,
-            };
-
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
+            let message = Message::Transaction(MessageTransaction::from_nats(transaction, slot));
             inner.send_message(message);
 
             Ok(())
         })
     }
 
-    fn notify_entry(&self, entry: ReplicaEntryInfoVersions) -> PluginResult<()> {
+    fn notify_entry(&self, entry: NatsEntryMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            #[allow(clippy::infallible_destructuring_match)]
-            let entry = match entry {
-                ReplicaEntryInfoVersions::V0_0_1(_entry) => {
-                    unreachable!("ReplicaEntryInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
-            };
-
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
+            let message = Message::Entry(Arc::new(MessageEntry::from_nats(entry)));
             inner.send_message(message);
 
             Ok(())
         })
     }
 
-    fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
+    fn notify_block_metadata(&self, blockinfo: NatsBlockMetadataMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let blockinfo = match blockinfo {
-                ReplicaBlockInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_3(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_3 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_4(info) => info,
-            };
-
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_nats(blockinfo)));
             inner.send_message(message);
 
             Ok(())
@@ -252,13 +229,13 @@ impl NatsGeyserPlugin for Plugin {
     }
 }
 
-#[no_mangle]
-#[allow(improper_ctypes_definitions)]
-/// # Safety
-///
-/// This function returns the Plugin pointer as trait GeyserPlugin.
-pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
-    let plugin = Plugin::default();
-    let plugin: Box<dyn GeyserPlugin> = Box::new(plugin);
-    Box::into_raw(plugin)
-}
+// #[no_mangle]
+// #[allow(improper_ctypes_definitions)]
+// /// # Safety
+// ///
+// /// This function returns the Plugin pointer as trait GeyserPlugin.
+// pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
+//     let plugin = Plugin::default();
+//     let plugin: Box<dyn GeyserPlugin> = Box::new(plugin);
+//     Box::into_raw(plugin)
+// }

@@ -29,6 +29,9 @@ use {
     solana_nats_geyser_protobufs::{
         account::AccountMessage,
         slot::SlotStatus as NatsSlotStatus,
+        transaction::TransactionMessage as NatsTransactionMessage,
+        entry::EntryMessage as NatsEntryMessage,
+        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
     }
 };
 
@@ -333,6 +336,25 @@ impl MessageTransactionInfo {
         }
     }
 
+    pub fn from_nats(info: NatsTransactionMessage) -> Self {
+        let account_keys = info
+            .transaction
+            .message()
+            .account_keys()
+            .iter()
+            .copied()
+            .collect();
+
+        Self {
+            signature: info.signature,
+            is_vote: info.is_vote,
+            transaction: convert_to::create_transaction_from_nats(info.transaction),
+            meta: convert_to::create_transaction_meta_nats(&info.transaction_status_meta),
+            index: info.index,
+            account_keys,
+        }
+    }
+
     pub fn from_update_oneof(msg: SubscribeUpdateTransactionInfo) -> FromUpdateOneofResult<Self> {
         Ok(Self {
             signature: Signature::try_from(msg.signature.as_slice())
@@ -395,6 +417,14 @@ impl MessageTransaction {
         }
     }
 
+    pub fn from_nats(info: NatsTransactionMessage, slot: Slot) -> Self {
+        Self {
+            transaction: Arc::new(MessageTransactionInfo::from_nats(info)),
+            slot,
+            created_at: Timestamp::from(SystemTime::now()),
+        }
+    }
+
     pub fn from_update_oneof(
         msg: SubscribeUpdateTransaction,
         created_at: Timestamp,
@@ -423,6 +453,21 @@ pub struct MessageEntry {
 
 impl MessageEntry {
     pub fn from_geyser(info: &ReplicaEntryInfoV2) -> Self {
+        Self {
+            slot: info.slot,
+            index: info.index,
+            num_hashes: info.num_hashes,
+            hash: Hash::new_from_array(<[u8; HASH_BYTES]>::try_from(info.hash).unwrap()),
+            executed_transaction_count: info.executed_transaction_count,
+            starting_transaction_index: info
+                .starting_transaction_index
+                .try_into()
+                .expect("failed convert usize to u64"),
+            created_at: Timestamp::from(SystemTime::now()),
+        }
+    }
+
+    pub fn from_nats(info: NatsEntryMessage) -> Self {
         Self {
             slot: info.slot,
             index: info.index,
@@ -478,6 +523,26 @@ impl DerefMut for MessageBlockMeta {
 
 impl MessageBlockMeta {
     pub fn from_geyser(info: &ReplicaBlockInfoV4<'_>) -> Self {
+        Self {
+            block_meta: SubscribeUpdateBlockMeta {
+                parent_slot: info.parent_slot,
+                slot: info.slot,
+                parent_blockhash: info.parent_blockhash.to_string(),
+                blockhash: info.blockhash.to_string(),
+                rewards: Some(convert_to::create_rewards_obj(
+                    &info.rewards.rewards,
+                    info.rewards.num_partitions,
+                )),
+                block_time: info.block_time.map(convert_to::create_timestamp),
+                block_height: info.block_height.map(convert_to::create_block_height),
+                executed_transaction_count: info.executed_transaction_count,
+                entries_count: info.entry_count,
+            },
+            created_at: Timestamp::from(SystemTime::now()),
+        }
+    }
+
+    pub fn from_nats(info: NatsBlockMetadataMessage) -> Self {
         Self {
             block_meta: SubscribeUpdateBlockMeta {
                 parent_slot: info.parent_slot,
