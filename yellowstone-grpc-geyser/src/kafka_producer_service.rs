@@ -1,5 +1,5 @@
 use {
-    crate::metrics::{BILLING_EVENTS_SENT, BILLING_EVENT_SEND_ERRORS, BILLING_EVENT_SEND_DURATION},
+    crate::metrics::{BILLING_EVENTS_SENT, BILLING_EVENT_SEND_DURATION, BILLING_EVENT_SEND_ERRORS},
     log::error,
     rdkafka::{
         producer::{FutureProducer, FutureRecord},
@@ -48,9 +48,8 @@ impl KafkaProducerService {
         kafka_queue_timeout: Duration,
         kafka_send_channel_size: usize,
     ) -> (Self, tokio::task::JoinHandle<()>) {
-        let (tx, mut rx): (Sender<BillingEvent>, Receiver<BillingEvent>) = mpsc::channel(
-            kafka_send_channel_size,
-        );
+        let (tx, mut rx): (Sender<BillingEvent>, Receiver<BillingEvent>) =
+            mpsc::channel(kafka_send_channel_size);
 
         let producer = Self::build_producer(kafka_brokers, kafka_username, kafka_password);
 
@@ -79,13 +78,14 @@ impl KafkaProducerService {
                             }
                             Err((e, _)) => {
                                 BILLING_EVENT_SEND_ERRORS.inc();
-                                error!("Kafka delivery failed: {:?}", e) },
+                                error!("Kafka delivery failed: {:?}", e)
+                            }
                         }
                     }
                     Err(e) => {
                         BILLING_EVENT_SEND_ERRORS.inc();
                         error!("Failed to serialize Kafka payload: {:?}", e)
-                    },
+                    }
                 }
             }
         });

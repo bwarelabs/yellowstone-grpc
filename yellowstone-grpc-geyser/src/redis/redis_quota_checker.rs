@@ -1,13 +1,13 @@
 use {
     crate::{
+        metrics::{QUOTA_CHECKER_DURATION, QUOTA_CHECKER_RUNS, TEAMS_CAPPED, TEAMS_CHECKED},
         redis::refreshing_fallback_cache::RefreshingFallbackCache,
         user_connection::connection_manager::ConnectionManager,
-        metrics::{QUOTA_CHECKER_RUNS, TEAMS_CHECKED, TEAMS_CAPPED, QUOTA_CHECKER_DURATION},
     },
+    log::{error, info},
     std::sync::Arc,
     time::OffsetDateTime,
     tokio::time::{interval, Duration},
-    log::{error, info},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -25,10 +25,12 @@ impl QuotaKey {
         let mut parts = suffix.splitn(2, ':');
         let year_month = parts.next()?.to_string();
         let team_id = parts.next()?.to_string();
-        Some(Self { year_month, team_id })
+        Some(Self {
+            year_month,
+            team_id,
+        })
     }
 }
-
 
 pub async fn start_redis_quota_checker(
     manager: Arc<ConnectionManager>,
@@ -84,8 +86,7 @@ pub async fn start_redis_quota_checker(
                     Err(e) => {
                         error!(
                             "Failed to check quota for team {}: {:?}",
-                            quota_key.team_id,
-                            e
+                            quota_key.team_id, e
                         );
                     }
                 }

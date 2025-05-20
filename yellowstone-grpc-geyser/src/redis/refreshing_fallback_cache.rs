@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use {
     anyhow::Result,
-    deadpool_redis::redis::AsyncCommands,
-    deadpool_redis::{Config, Connection, Pool, Runtime},
+    deadpool_redis::{redis::AsyncCommands, Config, Connection, Pool, Runtime},
     log::error,
     moka::future::Cache,
     std::{
+        collections::HashMap,
         sync::Arc,
         time::{Duration, Instant},
     },
@@ -122,10 +121,7 @@ where
         Ok(parsed_value)
     }
 
-    pub async fn get_many_or_refresh(
-        &self,
-        key_suffixes: &[String],
-    ) -> HashMap<String, Result<V>> {
+    pub async fn get_many_or_refresh(&self, key_suffixes: &[String]) -> HashMap<String, Result<V>> {
         let now = Instant::now();
         let mut results = HashMap::with_capacity(key_suffixes.len());
         let mut to_fetch = Vec::new();

@@ -14,6 +14,11 @@ use {
         SlotStatus as GeyserSlotStatus,
     },
     prost_types::Timestamp,
+    solana_nats_geyser_protobufs::{
+        account::AccountMessage, block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
+        entry::EntryMessage as NatsEntryMessage, slot::SlotStatus as NatsSlotStatus,
+        transaction::TransactionMessage as NatsTransactionMessage,
+    },
     solana_sdk::{
         clock::Slot,
         hash::{Hash, HASH_BYTES},
@@ -26,13 +31,6 @@ use {
         sync::Arc,
         time::SystemTime,
     },
-    solana_nats_geyser_protobufs::{
-        account::AccountMessage,
-        slot::SlotStatus as NatsSlotStatus,
-        transaction::TransactionMessage as NatsTransactionMessage,
-        entry::EntryMessage as NatsEntryMessage,
-        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
-    }
 };
 
 type FromUpdateOneofResult<T> = Result<T, &'static str>;

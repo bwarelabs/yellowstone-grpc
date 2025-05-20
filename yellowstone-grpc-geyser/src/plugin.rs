@@ -4,19 +4,20 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
-        nats_geyser_plugin_interface::NatsGeyserPlugin
+        nats_geyser_plugin_interface::NatsGeyserPlugin,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        GeyserPlugin, GeyserPluginError,
-        Result as PluginResult,
-        SlotStatus as GeyserSlotStatus,
+        GeyserPlugin, GeyserPluginError, Result as PluginResult, SlotStatus as GeyserSlotStatus,
+    },
+    solana_nats_geyser_protobufs::{
+        account::AccountMessage as NatsAccountMessage,
+        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
+        entry::EntryMessage as NatsEntryMessage, slot::SlotMessage as NatsSlotMessage,
+        transaction::TransactionMessage as NatsTransactionMessage,
     },
     std::{
         concat, env,
-        sync::{
-            atomic::{AtomicBool},
-            Arc, Mutex,
-        },
+        sync::{atomic::AtomicBool, Arc, Mutex},
         time::Duration,
     },
     tokio::{
@@ -26,13 +27,6 @@ use {
     yellowstone_grpc_proto::plugin::message::{
         Message, MessageAccount, MessageBlockMeta, MessageEntry, MessageSlot, MessageTransaction,
     },
-    solana_nats_geyser_protobufs::{
-        account::AccountMessage as NatsAccountMessage,
-        slot::SlotMessage as NatsSlotMessage,
-        transaction::TransactionMessage as NatsTransactionMessage,
-        entry::EntryMessage as NatsEntryMessage,
-        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
-    }
 };
 
 #[derive(Debug)]
@@ -142,14 +136,10 @@ impl NatsGeyserPlugin for Plugin {
         }
     }
 
-    fn update_account(
-        &self,
-        account: NatsAccountMessage,
-    ) -> PluginResult<()> {
+    fn update_account(&self, account: NatsAccountMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
             let slot = account.slot;
-            let message =
-                Message::Account(MessageAccount::from_nats(account, slot, false));
+            let message = Message::Account(MessageAccount::from_nats(account, slot, false));
             inner.send_message(message);
 
             Ok(())
@@ -163,28 +153,23 @@ impl NatsGeyserPlugin for Plugin {
         })
     }
 
-    fn update_slot_status(
-        &self,
-        slot: NatsSlotMessage
-    ) -> PluginResult<()> {
+    fn update_slot_status(&self, slot: NatsSlotMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
             let NatsSlotMessage {
                 slot,
                 parent,
-                status
+                status,
             } = slot;
             let geyser_slot_status = GeyserSlotStatus::from(status);
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, &geyser_slot_status));
+            let message =
+                Message::Slot(MessageSlot::from_geyser(slot, parent, &geyser_slot_status));
             inner.send_message(message);
             metrics::update_slot_status(&geyser_slot_status, slot);
             Ok(())
         })
     }
 
-    fn notify_transaction(
-        &self,
-        transaction: NatsTransactionMessage,
-    ) -> PluginResult<()> {
+    fn notify_transaction(&self, transaction: NatsTransactionMessage) -> PluginResult<()> {
         let slot = transaction.slot;
         self.with_inner(|inner| {
             let message = Message::Transaction(MessageTransaction::from_nats(transaction, slot));

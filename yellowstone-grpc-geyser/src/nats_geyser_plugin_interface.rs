@@ -1,12 +1,9 @@
 use {
-    solana_nats_geyser_protobufs::{
-        account::AccountMessage,
-        slot::SlotMessage,
-        transaction::TransactionMessage,
-        entry::EntryMessage,
-        block_metadata::BlockMetadataMessage,
-    },
     agave_geyser_plugin_interface::geyser_plugin_interface::Result,
+    solana_nats_geyser_protobufs::{
+        account::AccountMessage, block_metadata::BlockMetadataMessage, entry::EntryMessage,
+        slot::SlotMessage, transaction::TransactionMessage,
+    },
 };
 
 pub trait NatsGeyserPlugin: Send + Sync + std::fmt::Debug {
@@ -53,15 +50,11 @@ pub trait NatsGeyserPlugin: Send + Sync + std::fmt::Debug {
     /// The callback called right before a plugin is unloaded by the system
     /// Used for doing cleanup before unload.
     fn on_unload(&mut self) {}
-    
-    
+
     // TODO - add missing parameters? also add docs ?
     fn update_account(&self, account: AccountMessage) -> Result<()>;
     fn notify_end_of_startup(&self) -> Result<()>;
-    fn update_slot_status(
-        &self,
-        slot: SlotMessage
-    ) -> Result<()>;
+    fn update_slot_status(&self, slot: SlotMessage) -> Result<()>;
     fn notify_transaction(&self, transaction: TransactionMessage) -> Result<()>;
     fn notify_entry(&self, entry: EntryMessage) -> Result<()>;
     fn notify_block_metadata(&self, blockinfo: BlockMetadataMessage) -> Result<()>;

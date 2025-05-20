@@ -44,6 +44,13 @@ pub mod plugin;
 pub mod convert_to {
     use {
         super::prelude as proto,
+        solana_nats_geyser_protobufs::transaction::{
+            LegacyMessage as NatsLegacyMessage, LoadedMessage as NatsLoadedMessage,
+            SanitizedMessage as NatsSanitizedMessage,
+            SanitizedTransaction as NatsSanitizedTransaction,
+            TransactionStatusMeta as NatsTransactionStatusMeta,
+            TransactionTokenBalance as NatsTransactionTokenBalance,
+        },
         solana_sdk::{
             clock::UnixTimestamp,
             instruction::CompiledInstruction,
@@ -60,17 +67,6 @@ pub mod convert_to {
             InnerInstruction, InnerInstructions, Reward, RewardType, TransactionStatusMeta,
             TransactionTokenBalance,
         },
-        solana_nats_geyser_protobufs::{
-            transaction::{
-                SanitizedTransaction as NatsSanitizedTransaction,
-                SanitizedMessage as NatsSanitizedMessage,
-                LegacyMessage as NatsLegacyMessage,
-                LoadedMessage as NatsLoadedMessage,
-                TransactionStatusMeta as NatsTransactionStatusMeta,
-                TransactionTokenBalance as NatsTransactionTokenBalance,
-            },
-
-        }
     };
 
     pub fn create_transaction(tx: &SanitizedTransaction) -> proto::Transaction {
@@ -233,7 +229,9 @@ pub mod convert_to {
         }
     }
 
-    pub fn create_transaction_meta_nats(meta: &NatsTransactionStatusMeta) -> proto::TransactionStatusMeta {
+    pub fn create_transaction_meta_nats(
+        meta: &NatsTransactionStatusMeta,
+    ) -> proto::TransactionStatusMeta {
         let NatsTransactionStatusMeta {
             status,
             fee,
@@ -288,7 +286,6 @@ pub mod convert_to {
         }
     }
 
-
     pub fn create_transaction_error(
         status: &Result<(), TransactionError>,
     ) -> Option<proto::TransactionError> {
@@ -330,8 +327,13 @@ pub mod convert_to {
         balances.iter().map(create_token_balance).collect()
     }
 
-    pub fn create_token_balances_from_nats(balances: &[NatsTransactionTokenBalance]) -> Vec<proto::TokenBalance> {
-        balances.iter().map(create_token_balance_from_nats).collect()
+    pub fn create_token_balances_from_nats(
+        balances: &[NatsTransactionTokenBalance],
+    ) -> Vec<proto::TokenBalance> {
+        balances
+            .iter()
+            .map(create_token_balance_from_nats)
+            .collect()
     }
 
     pub fn create_token_balance(balance: &TransactionTokenBalance) -> proto::TokenBalance {
@@ -349,7 +351,9 @@ pub mod convert_to {
         }
     }
 
-    pub fn create_token_balance_from_nats(balance: &NatsTransactionTokenBalance) -> proto::TokenBalance {
+    pub fn create_token_balance_from_nats(
+        balance: &NatsTransactionTokenBalance,
+    ) -> proto::TokenBalance {
         proto::TokenBalance {
             account_index: balance.account_index as u32,
             mint: balance.mint.clone(),
@@ -364,7 +368,7 @@ pub mod convert_to {
         }
     }
 
-        pub fn create_rewards_obj(rewards: &[Reward], num_partitions: Option<u64>) -> proto::Rewards {
+    pub fn create_rewards_obj(rewards: &[Reward], num_partitions: Option<u64>) -> proto::Rewards {
         proto::Rewards {
             rewards: create_rewards(rewards),
             num_partitions: num_partitions.map(create_num_partitions),
