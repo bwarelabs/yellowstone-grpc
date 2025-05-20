@@ -13,7 +13,7 @@ use {
     },
     log::{error, info},
     prometheus::{
-        Histogram, HistogramOpts, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
+        Histogram, HistogramOpts, IntCounter, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
         TextEncoder,
     },
     solana_sdk::clock::Slot,
@@ -71,6 +71,7 @@ lazy_static::lazy_static! {
         &["status"]
     ).unwrap();
 
+    /// Billing
     pub static ref BILLING_EVENTS_SENT: IntCounter = IntCounter::new(
         "billing_events_sent_total", "Total number of billing events successfully sent"
     ).unwrap();
@@ -98,6 +99,32 @@ lazy_static::lazy_static! {
     pub static ref QUOTA_CHECKER_DURATION: Histogram = Histogram::with_opts(
         HistogramOpts::from(Opts::new("quota_checker_duration_seconds", "Quota checker loop duration"))
     ).unwrap();
+
+    /// NATS Consumer
+    pub static ref NATS_FETCHER_ACTIVE: IntGaugeVec = IntGaugeVec::new(
+            Opts::new("nats_fetcher_active", "Indicates if the fetcher is actively polling the stream"),
+            &["stream"]
+        ).unwrap();
+
+        pub static ref NATS_MESSAGES_FETCHED: IntCounterVec = IntCounterVec::new(
+            Opts::new("nats_messages_fetched_total", "Total number of messages fetched from NATS JetStream"),
+            &["stream"]
+        ).unwrap();
+
+        pub static ref NATS_MESSAGES_DROPPED: IntCounterVec = IntCounterVec::new(
+            Opts::new("nats_messages_dropped_total", "Number of dropped messages (e.g. buffer full)"),
+            &["stream", "reason"]
+        ).unwrap();
+
+        pub static ref NATS_WORKER_ERRORS: IntCounterVec = IntCounterVec::new(
+            Opts::new("nats_worker_errors_total", "Errors while handling messages"),
+            &["stream", "error_type"]
+        ).unwrap();
+
+        pub static ref NATS_WORKER_DURATION: HistogramVec = HistogramVec::new(
+            HistogramOpts::new("nats_worker_duration_seconds", "Time to process a single message"),
+            &["stream"]
+        ).unwrap();
 }
 
 #[derive(Debug)]
@@ -237,6 +264,11 @@ impl PrometheusService {
             register!(TEAMS_CHECKED);
             register!(TEAMS_CAPPED);
             register!(QUOTA_CHECKER_DURATION);
+            register!(NATS_FETCHER_ACTIVE);
+            register!(NATS_MESSAGES_FETCHED);
+            register!(NATS_MESSAGES_DROPPED);
+            register!(NATS_WORKER_ERRORS);
+            register!(NATS_WORKER_DURATION);
 
             VERSION
                 .with_label_values(&[
