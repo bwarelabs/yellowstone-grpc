@@ -5,6 +5,13 @@ use {
             NATS_WORKER_DURATION, NATS_WORKER_ERRORS,
         },
         plugin::Plugin,
+        nats_plugin_runner::dispatcher::{
+            handle_account,
+            handle_slot,
+            handle_transaction,
+            handle_entry,
+            handle_block_metadata,
+        },
     },
     async_nats::jetstream::{
         consumer::{pull::OrderedConfig, Consumer},
@@ -22,7 +29,6 @@ pub async fn start_stream_workers(
     js: Context,
     plugin: Arc<Plugin>,
 ) -> anyhow::Result<()> {
-    use crate::nats_plugin_runner::dispatcher::*;
 
     let (tx, rx) = flume::bounded::<Vec<u8>>(5000);
     let num_workers = 4;
@@ -41,7 +47,6 @@ pub async fn start_stream_workers(
     {
         let tx = tx.clone();
         let label = label.to_string();
-
         tokio::spawn(async move {
             NATS_FETCHER_ACTIVE.with_label_values(&[&label]).set(1);
 
