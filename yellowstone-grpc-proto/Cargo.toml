@@ -1,6 +1,6 @@
 [package]
 name = "yellowstone-grpc-proto"
-version = "6.0.0"
+version = "6.1.0"
 authors = { workspace = true }
 edition = { workspace = true }
 description = "Yellowstone gRPC Geyser Protobuf Definitions"
@@ -33,6 +33,7 @@ smallvec = { workspace = true, optional = true }
 spl-token-2022 = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true }
+solana-nats-geyser-protobufs = { git = "ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git", branch = "main" }
 
 [dev-dependencies]
 criterion = { workspace = true }
