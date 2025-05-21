@@ -1,4 +1,4 @@
-use {serde::Deserialize, std::fs};
+use {serde::Deserialize, std::fs, std::path::Path};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -20,7 +20,7 @@ pub struct ConfigNatsServerStreams {
     pub block_metadata_stream_name: String,
 }
 
-pub fn load_config(path: &str) -> anyhow::Result<Config> {
+pub fn load_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     let content = fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&content)?)
+    Ok(toml::from_str(&content)?)
 }

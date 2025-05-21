@@ -14,11 +14,13 @@ use {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = load_config("config.json")?;
+    // Load TOML config for NATS
+    let config = load_config("nats_config.toml")?;
 
-    let mut plugin = Plugin::default();
-    plugin.on_load("config.json", false)?;
-    let plugin_arc = Arc::new(plugin);
+     // Load JSON config for plugin
+     let mut plugin = Plugin::default();
+     plugin.on_load("config.json", false)?;
+     let plugin_arc = Arc::new(plugin);
 
     let client = connect(&config.nats.url).await?;
     let js = jetstream::new(client);
