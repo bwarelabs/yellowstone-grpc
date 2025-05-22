@@ -1,4 +1,7 @@
-use {serde::Deserialize, std::fs, std::path::Path};
+use {
+    serde::Deserialize,
+    std::{fs, path::Path},
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {

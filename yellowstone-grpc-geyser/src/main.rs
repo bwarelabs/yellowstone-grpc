@@ -1,15 +1,15 @@
 use {
+    async_nats::{connect, jetstream},
+    std::sync::Arc,
+    tokio::signal,
     yellowstone_grpc_geyser::{
         nats_geyser_plugin_interface::NatsGeyserPlugin,
         nats_plugin_runner::{
             config::{load_config, Config},
-            worker::start_stream_workers
+            worker::start_stream_workers,
         },
-        plugin::Plugin
+        plugin::Plugin,
     },
-    async_nats::{connect, jetstream},
-    std::sync::Arc,
-    tokio::signal,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 
     // Create and load plugin before entering the async context
     let mut plugin = Plugin::default();
-    plugin.on_load("config_20.json", false)?;
+    plugin.on_load("config.json", false)?;
 
     let plugin_arc = Arc::new(plugin);
 
@@ -27,16 +27,16 @@ fn main() -> anyhow::Result<()> {
 
     let result = rt.block_on(async_main(&config, plugin_arc.clone()));
 
-     match Arc::try_unwrap(plugin_arc) {
-         Ok(mut plugin) => {
-             plugin.on_unload();
-         }
-         Err(_) => {
-             eprintln!("Plugin still in use, not dropped cleanly");
-         }
-     }
- 
-     result
+    match Arc::try_unwrap(plugin_arc) {
+        Ok(mut plugin) => {
+            plugin.on_unload();
+        }
+        Err(_) => {
+            eprintln!("Plugin still in use, not dropped cleanly");
+        }
+    }
+
+    result
 }
 
 async fn async_main(config: &Config, plugin_arc: Arc<Plugin>) -> anyhow::Result<()> {

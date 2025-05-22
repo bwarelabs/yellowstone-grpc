@@ -17,6 +17,7 @@ required-features = ["plugin-bench"]
 
 [dependencies]
 agave-geyser-plugin-interface = { workspace = true, optional = true }
+solana-message = { version = "2.2.1", features = ["serde"] }
 base64 = { workspace = true, optional = true }
 bincode = { workspace = true, optional = true }
 bs58 = { workspace = true, optional = true }

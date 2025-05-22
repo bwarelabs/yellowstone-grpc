@@ -13,8 +13,8 @@ use {
     },
     log::{error, info},
     prometheus::{
-        Histogram, HistogramOpts, IntCounter, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
-        TextEncoder,
+        Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec,
+        Opts, Registry, TextEncoder,
     },
     solana_sdk::clock::Slot,
     std::{

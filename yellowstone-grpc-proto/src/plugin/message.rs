@@ -14,6 +14,7 @@ use {
         SlotStatus as GeyserSlotStatus,
     },
     prost_types::Timestamp,
+    solana_message::v0::LoadedAddresses,
     solana_nats_geyser_protobufs::{
         account::AccountMessage, block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
         entry::EntryMessage as NatsEntryMessage, slot::SlotStatus as NatsSlotStatus,
@@ -336,10 +337,24 @@ impl MessageTransactionInfo {
     }
 
     pub fn from_nats(info: NatsTransactionMessage) -> Self {
+        let static_keys: Vec<Pubkey> = info
+            .transaction
+            .message()
+            .static_account_keys()
+            .iter()
+            .map(Pubkey::from)
+            .collect();
+
+        let dynamic_keys: Option<LoadedAddresses> = info
+            .transaction
+            .message()
+            .loaded_message()
+            .map(LoadedAddresses::from);
+
         let account_keys = info
             .transaction
             .message()
-            .account_keys()
+            .account_keys(&static_keys, dynamic_keys.as_ref())
             .iter()
             .copied()
             .collect();

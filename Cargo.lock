@@ -2974,12 +2974,9 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "once_cell_polyfill"
-version = "1.70.0"
+version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2611b99ab098a31bdc8be48b4f1a285ca0ced28bd5b4f23e45efa8c63b09efa5"
-dependencies = [
- "once_cell",
-]
+checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 
 [[package]]
 name = "oorandom"
@@ -3049,9 +3046,9 @@ dependencies = [
 
 [[package]]
 name = "os_pipe"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ffd2b0a5634335b135d5728d84c5e0fd726954b87111f7506a61c502280d982"
+checksum = "db335f4760b14ead6290116f2427bf33a14d4f0617d49f78a246de10c1831224"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
@@ -3951,9 +3948,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
+checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
 
 [[package]]
 name = "ryu"
@@ -5038,7 +5035,7 @@ checksum = "307fb2f78060995979e9b4f68f833623565ed4e55d3725f100454ce78a99a1a3"
 [[package]]
 name = "solana-nats-geyser-protobufs"
 version = "0.1.0"
-source = "git+ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git?branch=main#1e2054f69788315d406054e1045bfecd293c9631"
+source = "git+ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git?branch=main#0377f806cde88b2d0c20c1c3fa87d8f7752cb48a"
 dependencies = [
  "agave-geyser-plugin-interface",
  "bincode 2.0.1",
@@ -7619,6 +7616,7 @@ dependencies = [
  "serde",
  "smallvec",
  "solana-account-decoder",
+ "solana-message",
  "solana-nats-geyser-protobufs",
  "solana-sdk",
  "solana-storage-proto",
