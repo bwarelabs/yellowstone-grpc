@@ -44,12 +44,27 @@ pub mod plugin;
 pub mod convert_to {
     use {
         super::prelude as proto,
-        solana_nats_geyser_protobufs::transaction::{
-            LegacyMessage as NatsLegacyMessage, LoadedMessage as NatsLoadedMessage,
-            SanitizedMessage as NatsSanitizedMessage,
-            SanitizedTransaction as NatsSanitizedTransaction,
-            TransactionStatusMeta as NatsTransactionStatusMeta,
-            TransactionTokenBalance as NatsTransactionTokenBalance,
+        solana_nats_geyser_protobufs::{
+            transaction::{
+                LegacyMessage as NatsLegacyMessage,
+                LoadedMessage as NatsLoadedMessage,
+                SanitizedMessage as NatsSanitizedMessage,
+                SanitizedTransaction as NatsSanitizedTransaction,
+                TransactionStatusMeta as NatsTransactionStatusMeta,
+                TransactionTokenBalance as NatsTransactionTokenBalance,
+                MessageHeader as NatsMessageHeader,
+                Pubkey as NatsPubkey,
+                CompiledInstruction as NatsCompiledInstruction,
+                InnerInstructions as NatsInnerInstructions,
+                InnerInstruction as NatsInnerInstruction,
+                MessageAddressTableLookup as NatsMessageAddressTableLookup,
+                TransactionError as NatsTransactionError,
+                TransactionReturnData as NatsTransactionReturnData,
+            },
+            block_metadata::{
+                Reward as NatsReward,
+                RewardType as NatsRewardType,
+            },
         },
         solana_sdk::{
             clock::UnixTimestamp,
@@ -85,7 +100,7 @@ pub mod convert_to {
             signatures: tx
                 .signatures()
                 .iter()
-                .map(|signature| <Signature as AsRef<[u8]>>::as_ref(signature).into())
+                .map(|signature| <Signature as AsRef<[u8]>>::as_ref(&Signature::from(signature)).into())
                 .collect(),
             message: Some(create_message_from_nats(tx.message())),
         }
@@ -115,20 +130,20 @@ pub mod convert_to {
     pub fn create_message_from_nats(message: &NatsSanitizedMessage) -> proto::Message {
         match message {
             NatsSanitizedMessage::Legacy(NatsLegacyMessage { message, .. }) => proto::Message {
-                header: Some(create_header(&message.header)),
-                account_keys: create_pubkeys(&message.account_keys),
+                header: Some(create_header_from_nats(&message.header)),
+                account_keys: create_pubkeys_from_nats(&message.account_keys),
                 recent_blockhash: message.recent_blockhash.to_bytes().into(),
-                instructions: create_instructions(&message.instructions),
+                instructions: create_instructions_from_nats(&message.instructions),
                 versioned: false,
                 address_table_lookups: vec![],
             },
             NatsSanitizedMessage::V0(NatsLoadedMessage { message, .. }) => proto::Message {
-                header: Some(create_header(&message.header)),
-                account_keys: create_pubkeys(&message.account_keys),
+                header: Some(create_header_from_nats(&message.header)),
+                account_keys: create_pubkeys_from_nats(&message.account_keys),
                 recent_blockhash: message.recent_blockhash.to_bytes().into(),
-                instructions: create_instructions(&message.instructions),
+                instructions: create_instructions_from_nats(&message.instructions),
                 versioned: true,
-                address_table_lookups: create_lookups(&message.address_table_lookups),
+                address_table_lookups: create_lookups_from_nats(&message.address_table_lookups),
             },
         }
     }
@@ -141,6 +156,14 @@ pub mod convert_to {
         }
     }
 
+    pub const fn create_header_from_nats(header: &NatsMessageHeader) -> proto::MessageHeader {
+            proto::MessageHeader {
+                num_required_signatures: header.num_required_signatures as u32,
+                num_readonly_signed_accounts: header.num_readonly_signed_accounts as u32,
+                num_readonly_unsigned_accounts: header.num_readonly_unsigned_accounts as u32,
+            }
+        }
+
     pub fn create_pubkeys(pubkeys: &[Pubkey]) -> Vec<Vec<u8>> {
         pubkeys
             .iter()
@@ -148,9 +171,20 @@ pub mod convert_to {
             .collect()
     }
 
+    pub fn create_pubkeys_from_nats(pubkeys: &[NatsPubkey]) -> Vec<Vec<u8>> {
+        pubkeys
+            .iter()
+            .map(|key| <Pubkey as AsRef<[u8]>>::as_ref(&Pubkey::from(key)).into())
+            .collect()
+    }
+
     pub fn create_instructions(ixs: &[CompiledInstruction]) -> Vec<proto::CompiledInstruction> {
         ixs.iter().map(create_instruction).collect()
     }
+
+    pub fn create_instructions_from_nats(ixs: &[NatsCompiledInstruction]) -> Vec<proto::CompiledInstruction> {
+            ixs.iter().map(create_instruction_from_nats).collect()
+        }
 
     pub fn create_instruction(ix: &CompiledInstruction) -> proto::CompiledInstruction {
         proto::CompiledInstruction {
@@ -160,15 +194,36 @@ pub mod convert_to {
         }
     }
 
+      pub fn create_instruction_from_nats(ix: &NatsCompiledInstruction) -> proto::CompiledInstruction {
+            proto::CompiledInstruction {
+                program_id_index: ix.program_id_index as u32,
+                accounts: ix.accounts.clone(),
+                data: ix.data.clone(),
+            }
+        }
+
     pub fn create_lookups(
         lookups: &[MessageAddressTableLookup],
     ) -> Vec<proto::MessageAddressTableLookup> {
         lookups.iter().map(create_lookup).collect()
     }
 
+    pub fn create_lookups_from_nats(
+            lookups: &[NatsMessageAddressTableLookup],
+        ) -> Vec<proto::MessageAddressTableLookup> {
+            lookups.iter().map(create_lookup_from_nats).collect()
+        }
+
     pub fn create_lookup(lookup: &MessageAddressTableLookup) -> proto::MessageAddressTableLookup {
         proto::MessageAddressTableLookup {
             account_key: <Pubkey as AsRef<[u8]>>::as_ref(&lookup.account_key).into(),
+            writable_indexes: lookup.writable_indexes.clone(),
+            readonly_indexes: lookup.readonly_indexes.clone(),
+        }
+    }
+    pub fn create_lookup_from_nats(lookup: &NatsMessageAddressTableLookup) -> proto::MessageAddressTableLookup {
+        proto::MessageAddressTableLookup {
+            account_key: <Pubkey as AsRef<[u8]>>::as_ref(&Pubkey::from(&lookup.account_key)).into(),
             writable_indexes: lookup.writable_indexes.clone(),
             readonly_indexes: lookup.readonly_indexes.clone(),
         }
@@ -246,11 +301,11 @@ pub mod convert_to {
             return_data,
             compute_units_consumed,
         } = meta;
-        let err = create_transaction_error(status);
+        let err = create_transaction_error_from_nats(status);
         let inner_instructions_none = inner_instructions.is_none();
         let inner_instructions = inner_instructions
             .as_deref()
-            .map(create_inner_instructions_vec)
+            .map(create_inner_instructions_vec_from_nats)
             .unwrap_or_default();
         let log_messages_none = log_messages.is_none();
         let log_messages = log_messages.clone().unwrap_or_default();
@@ -262,9 +317,9 @@ pub mod convert_to {
             .as_deref()
             .map(create_token_balances_from_nats)
             .unwrap_or_default();
-        let rewards = rewards.as_deref().map(create_rewards).unwrap_or_default();
-        let loaded_writable_addresses = create_pubkeys(&loaded_addresses.writable);
-        let loaded_readonly_addresses = create_pubkeys(&loaded_addresses.readonly);
+        let rewards = rewards.as_deref().map(create_rewards_from_nats).unwrap_or_default();
+        let loaded_writable_addresses = create_pubkeys_from_nats(&loaded_addresses.writable);
+        let loaded_readonly_addresses = create_pubkeys_from_nats(&loaded_addresses.readonly);
 
         proto::TransactionStatusMeta {
             err,
@@ -280,7 +335,7 @@ pub mod convert_to {
             rewards,
             loaded_writable_addresses,
             loaded_readonly_addresses,
-            return_data: return_data.as_ref().map(create_return_data),
+            return_data: return_data.as_ref().map(create_return_data_from_nats),
             return_data_none: return_data.is_none(),
             compute_units_consumed: *compute_units_consumed,
         }
@@ -297,11 +352,28 @@ pub mod convert_to {
         }
     }
 
+     pub fn create_transaction_error_from_nats(
+            status: &Result<(), NatsTransactionError>,
+        ) -> Option<proto::TransactionError> {
+            match status {
+                Ok(()) => None,
+                Err(err) => Some(proto::TransactionError {
+                    err: bincode::serialize(&err).expect("transaction error to serialize to bytes"),
+                }),
+            }
+        }
+
     pub fn create_inner_instructions_vec(
         ixs: &[InnerInstructions],
     ) -> Vec<proto::InnerInstructions> {
         ixs.iter().map(create_inner_instructions).collect()
     }
+
+    pub fn create_inner_instructions_vec_from_nats(
+            ixs: &[NatsInnerInstructions],
+        ) -> Vec<proto::InnerInstructions> {
+            ixs.iter().map(create_inner_instructions_from_nats).collect()
+        }
 
     pub fn create_inner_instructions(instructions: &InnerInstructions) -> proto::InnerInstructions {
         proto::InnerInstructions {
@@ -309,12 +381,31 @@ pub mod convert_to {
             instructions: create_inner_instruction_vec(&instructions.instructions),
         }
     }
+    pub fn create_inner_instructions_from_nats(instructions: &NatsInnerInstructions) -> proto::InnerInstructions {
+        proto::InnerInstructions {
+            index: instructions.index as u32,
+            instructions: create_inner_instruction_vec_from_nats(&instructions.instructions),
+        }
+    }
 
     pub fn create_inner_instruction_vec(ixs: &[InnerInstruction]) -> Vec<proto::InnerInstruction> {
         ixs.iter().map(create_inner_instruction).collect()
     }
 
+    pub fn create_inner_instruction_vec_from_nats(ixs: &[NatsInnerInstruction]) -> Vec<proto::InnerInstruction> {
+        ixs.iter().map(create_inner_instruction_from_nats).collect()
+    }
+
     pub fn create_inner_instruction(instruction: &InnerInstruction) -> proto::InnerInstruction {
+        proto::InnerInstruction {
+            program_id_index: instruction.instruction.program_id_index as u32,
+            accounts: instruction.instruction.accounts.clone(),
+            data: instruction.instruction.data.clone(),
+            stack_height: instruction.stack_height,
+        }
+    }
+
+    pub fn create_inner_instruction_from_nats(instruction: &NatsInnerInstruction) -> proto::InnerInstruction {
         proto::InnerInstruction {
             program_id_index: instruction.instruction.program_id_index as u32,
             accounts: instruction.instruction.accounts.clone(),
@@ -379,12 +470,26 @@ pub mod convert_to {
         rewards.iter().map(create_reward).collect()
     }
 
+    pub fn create_rewards_from_nats(rewards: &[NatsReward]) -> Vec<proto::Reward> {
+        rewards.iter().map(create_reward_from_nats).collect()
+    }
+
     pub fn create_reward(reward: &Reward) -> proto::Reward {
         proto::Reward {
             pubkey: reward.pubkey.clone(),
             lamports: reward.lamports,
             post_balance: reward.post_balance,
             reward_type: create_reward_type(reward.reward_type) as i32,
+            commission: reward.commission.map(|c| c.to_string()).unwrap_or_default(),
+        }
+    }
+
+    pub fn create_reward_from_nats(reward: &NatsReward) -> proto::Reward {
+        proto::Reward {
+            pubkey: reward.pubkey.clone(),
+            lamports: reward.lamports,
+            post_balance: reward.post_balance,
+            reward_type: create_reward_type_from_nats(reward.reward_type.clone()) as i32,
             commission: reward.commission.map(|c| c.to_string()).unwrap_or_default(),
         }
     }
@@ -399,11 +504,28 @@ pub mod convert_to {
         }
     }
 
+    pub const fn create_reward_type_from_nats(reward_type: Option<NatsRewardType>) -> proto::RewardType {
+        match reward_type {
+            None => proto::RewardType::Unspecified,
+            Some(NatsRewardType::Fee) => proto::RewardType::Fee,
+            Some(NatsRewardType::Rent) => proto::RewardType::Rent,
+            Some(NatsRewardType::Staking) => proto::RewardType::Staking,
+            Some(NatsRewardType::Voting) => proto::RewardType::Voting,
+        }
+    }
+
     pub const fn create_num_partitions(num_partitions: u64) -> proto::NumPartitions {
         proto::NumPartitions { num_partitions }
     }
 
     pub fn create_return_data(return_data: &TransactionReturnData) -> proto::ReturnData {
+        proto::ReturnData {
+            program_id: return_data.program_id.to_bytes().into(),
+            data: return_data.data.clone(),
+        }
+    }
+
+    pub fn create_return_data_from_nats(return_data: &NatsTransactionReturnData) -> proto::ReturnData {
         proto::ReturnData {
             program_id: return_data.program_id.to_bytes().into(),
             data: return_data.data.clone(),

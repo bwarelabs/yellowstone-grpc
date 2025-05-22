@@ -1,11 +1,9 @@
 [nats]
-url = "nats://localhost:4222"
+url = "nats://57.129.64.147:4222"
 
 [nats.streams]
 account_stream_name = "accounts"
 slot_stream_name = "slots"
 transaction_stream_name = "transactions"
 entry_stream_name = "entries"
-block_metadata_stream_name = "blockmeta"
-
-# Optional: plugin-specific config in a separate file, e.g. config_plugin.toml
+block_metadata_stream_name = "block_metadatas"

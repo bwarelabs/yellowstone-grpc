@@ -25,6 +25,7 @@ use {
         pubkey::Pubkey,
         signature::Signature,
     },
+    solana_transaction_status::Reward as AgaveReward,
     std::{
         collections::HashSet,
         ops::{Deref, DerefMut},
@@ -239,7 +240,7 @@ impl MessageAccountInfo {
             rent_epoch: info.rent_epoch,
             data: info.data.into(),
             write_version: info.write_version,
-            txn_signature: info.txn.map(|txn| *txn.signature()),
+            txn_signature: info.txn.map(|txn| txn.signature().clone().into()),
         }
     }
 
@@ -344,7 +345,7 @@ impl MessageTransactionInfo {
             .collect();
 
         Self {
-            signature: info.signature,
+            signature: info.signature.into(),
             is_vote: info.is_vote,
             transaction: convert_to::create_transaction_from_nats(info.transaction),
             meta: convert_to::create_transaction_meta_nats(&info.transaction_status_meta),
@@ -548,7 +549,12 @@ impl MessageBlockMeta {
                 parent_blockhash: info.parent_blockhash.to_string(),
                 blockhash: info.blockhash.to_string(),
                 rewards: Some(convert_to::create_rewards_obj(
-                    &info.rewards.rewards,
+                    &info
+                        .rewards
+                        .rewards
+                        .iter()
+                        .map(AgaveReward::from)
+                        .collect::<Vec<_>>(),
                     info.rewards.num_partitions,
                 )),
                 block_time: info.block_time.map(convert_to::create_timestamp),

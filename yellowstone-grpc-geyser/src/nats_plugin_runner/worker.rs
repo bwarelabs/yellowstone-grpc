@@ -21,6 +21,7 @@ use {
     futures::StreamExt,
     std::sync::Arc,
     tokio::time::Duration,
+    log::{error, warn, info},
 };
 
 pub async fn start_stream_workers(
@@ -31,7 +32,7 @@ pub async fn start_stream_workers(
 ) -> anyhow::Result<()> {
 
     let (tx, rx) = flume::bounded::<Vec<u8>>(5000);
-    let num_workers = 4;
+    let num_workers = 400;
 
     // Create ephemeral ordered consumer
     let stream = js.get_stream(stream_name).await?;
@@ -53,7 +54,7 @@ pub async fn start_stream_workers(
             let mut messages = match consumer.messages().await {
                 Ok(stream) => stream,
                 Err(e) => {
-                    log::error!("[{}-fetcher] Failed to start consumer stream: {:?}", label, e);
+                    error!("[{}-fetcher] Failed to start consumer stream: {:?}", label, e);
                     return;
                 }
             };
@@ -67,14 +68,14 @@ pub async fn start_stream_workers(
                             NATS_MESSAGES_DROPPED
                                 .with_label_values(&[&label, "buffer_full"])
                                 .inc();
-                            log::warn!("[{}-fetcher] Dropped message: buffer full", label);
+                            warn!("[{}-fetcher] Dropped message: buffer full", label);
                         }
                     }
                     Err(e) => {
                         NATS_WORKER_ERRORS
                             .with_label_values(&[&label, "fetch_error"])
                             .inc();
-                        log::error!("[{}-fetcher] Stream error: {:?}", label, e);
+                        error!("[{}-fetcher] Stream error: {:?}", label, e);
                         tokio::time::sleep(Duration::from_millis(200)).await;
                     }
                 }
@@ -92,6 +93,7 @@ pub async fn start_stream_workers(
 
         tokio::spawn(async move {
             while let Ok(data) = rx.recv_async().await {
+                info!("thread-{} received message", i);
                 let timer = NATS_WORKER_DURATION
                     .with_label_values(&[&label])
                     .start_timer();
@@ -111,7 +113,7 @@ pub async fn start_stream_workers(
                     NATS_WORKER_ERRORS
                         .with_label_values(&[&label, "handler"])
                         .inc();
-                    log::error!("[{}-worker-{}] Failed to handle message: {:?}", label, i, e);
+                    error!("[{}-worker-{}] Failed to handle message: {:?}", label, i, e);
                 }
             }
         });
