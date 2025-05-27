@@ -1,5 +1,5 @@
 [nats]
-url = "nats://57.129.64.147:4222"
+url = "nats://localhost:4222"
 
 [nats.streams]
 account_stream_name = "accounts"
