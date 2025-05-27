@@ -82,7 +82,7 @@ fn spawn_fetcher_task(
         loop {
             select! {
                 _ = shutdown_rx.recv() => {
-                    info!("[{}-fetcher] Received shutdown signal for fetcher task", label);
+                    info!("[{}-fetcher] Shutdown signal received", label);
                     break;
                 }
                 msg = messages.next() => {
@@ -135,7 +135,7 @@ fn spawn_worker_task(
         loop {
             select! {
                 _ = shutdown_rx.recv() => {
-                    info!("[{}-monitor] Shutdown signal received for worker task", label);
+                    info!("[{}-worker] Shutdown signal received", label);
                     break;
                 }
                 result = rx.recv_async() => {
@@ -179,7 +179,7 @@ fn spawn_metrics_task(label: String, rx: flume::Receiver<Vec<u8>>, mut shutdown_
         loop {
             select! {
                 _ = shutdown_rx.recv() => {
-                    info!("[{}-monitor] Shutdown signal received for metrics task", label);
+                    info!("[{}-monitor] Shutdown signal received", label);
                     break;
                 }
                 _ = sleep(Duration::from_millis(500)) => {
