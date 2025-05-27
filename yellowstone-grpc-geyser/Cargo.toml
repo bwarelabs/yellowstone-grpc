@@ -54,6 +54,7 @@ async-nats = "0.41.0"
 flume = "0.11.1"
 solana-nats-geyser-structs = { git = "ssh://git@github.com/bwarelabs/solana-nats-geyser-structs.git", branch = "main" }
 toml = "0.8.22"
+once_cell = "1.21.3"
 
 [build-dependencies]
 anyhow = { workspace = true }

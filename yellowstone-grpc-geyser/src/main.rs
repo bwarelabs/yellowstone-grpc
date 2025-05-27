@@ -5,17 +5,13 @@ use {
     yellowstone_grpc_geyser::{
         nats_geyser_plugin_interface::NatsGeyserPlugin,
         nats_plugin_runner::{
-            config::{load_config, Config},
-            worker::start_stream_workers,
+            config::CONFIG, constants::WorkerLabels, worker::start_stream_workers,
         },
         plugin::Plugin,
     },
 };
 
 fn main() -> anyhow::Result<()> {
-    let config = load_config("nats_config.toml")?;
-
-    // Create and load plugin before entering the async context
     let mut plugin = Plugin::default();
     plugin.on_load("config.json", false)?;
 
@@ -25,51 +21,50 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    rt.block_on(async_main(&config, plugin_arc.clone()))
+    rt.block_on(async_main(plugin_arc.clone()))
 }
 
-async fn async_main(config: &Config, plugin_arc: Arc<Plugin>) -> anyhow::Result<()> {
-    let client = connect(&config.nats.url).await?;
+async fn async_main(plugin_arc: Arc<Plugin>) -> anyhow::Result<()> {
+    let client = connect(&CONFIG.nats.url).await?;
     let js = jetstream::new(client);
 
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 
-    // TODO: move labels to some consts
     start_stream_workers(
-        "account",
-        &config.nats.streams.account_stream_name,
+        WorkerLabels::ACCOUNT,
+        &CONFIG.nats.streams.name.account,
         js.clone(),
         plugin_arc.clone(),
         shutdown_rx.resubscribe(),
     )
     .await?;
     start_stream_workers(
-        "slot",
-        &config.nats.streams.slot_stream_name,
+        WorkerLabels::SLOT,
+        &CONFIG.nats.streams.name.slot,
         js.clone(),
         plugin_arc.clone(),
         shutdown_rx.resubscribe(),
     )
     .await?;
     start_stream_workers(
-        "transaction",
-        &config.nats.streams.transaction_stream_name,
+        WorkerLabels::TRANSACTION,
+        &CONFIG.nats.streams.name.transaction,
         js.clone(),
         plugin_arc.clone(),
         shutdown_rx.resubscribe(),
     )
     .await?;
     start_stream_workers(
-        "entry",
-        &config.nats.streams.entry_stream_name,
+        WorkerLabels::ENTRY,
+        &CONFIG.nats.streams.name.entry,
         js.clone(),
         plugin_arc.clone(),
         shutdown_rx.resubscribe(),
     )
     .await?;
     start_stream_workers(
-        "block_metadata",
-        &config.nats.streams.block_metadata_stream_name,
+        WorkerLabels::BLOCK_METADATA,
+        &CONFIG.nats.streams.name.block_metadata,
         js.clone(),
         plugin_arc.clone(),
         shutdown_rx,

@@ -126,8 +126,8 @@ lazy_static::lazy_static! {
         &["stream"]
     ).unwrap();
 
-     pub static ref NATS_QUEUE_DEPTH: IntGaugeVec = IntGaugeVec::new(
-        Opts::new("nats_queue_depth", "Number of messages in the queue for each stream"),
+     pub static ref NATS_FETCHER_BUFFER_LOAD: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("nats_fetcher_buffer_load", "Number of messages in the buffer channel for each stream"),
         &["stream"]
      ).unwrap();
 
@@ -279,7 +279,7 @@ impl PrometheusService {
             register!(NATS_MESSAGES_DROPPED);
             register!(NATS_WORKER_ERRORS);
             register!(NATS_WORKER_DURATION);
-            register!(NATS_QUEUE_DEPTH);
+            register!(NATS_FETCHER_BUFFER_LOAD);
             register!(NATS_BYTES_RECEIVED);
 
             VERSION

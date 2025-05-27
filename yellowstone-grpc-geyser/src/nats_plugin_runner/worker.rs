@@ -1,11 +1,16 @@
 use {
     crate::{
         metrics::{
-            NATS_BYTES_RECEIVED, NATS_FETCHER_ACTIVE, NATS_MESSAGES_DROPPED, NATS_MESSAGES_FETCHED,
-            NATS_QUEUE_DEPTH, NATS_WORKER_DURATION, NATS_WORKER_ERRORS,
+            NATS_BYTES_RECEIVED, NATS_FETCHER_ACTIVE, NATS_FETCHER_BUFFER_LOAD,
+            NATS_MESSAGES_DROPPED, NATS_MESSAGES_FETCHED, NATS_WORKER_DURATION, NATS_WORKER_ERRORS,
         },
-        nats_plugin_runner::dispatcher::{
-            handle_account, handle_block_metadata, handle_entry, handle_slot, handle_transaction,
+        nats_plugin_runner::{
+            config::CONFIG,
+            constants::WorkerLabels,
+            dispatcher::{
+                handle_account, handle_block_metadata, handle_entry, handle_slot,
+                handle_transaction,
+            },
         },
         plugin::Plugin,
     },
@@ -31,13 +36,13 @@ pub async fn start_stream_workers(
     plugin: Arc<Plugin>,
     shutdown_rx: Receiver<()>,
 ) -> anyhow::Result<()> {
-    let (tx, rx) = flume::bounded::<Vec<u8>>(5000);
+    let (tx, rx) = flume::bounded::<Vec<u8>>(CONFIG.nats.fetchers.channel_bound);
 
     let stream = js.get_stream(stream_name).await?;
     let consumer: Consumer<OrderedConfig> = stream
         .create_consumer(OrderedConfig {
             name: Some(label.into()),
-            max_batch: 64,
+            max_batch: CONFIG.nats.consumers.max_batch_size,
             ..Default::default()
         })
         .await?;
@@ -146,11 +151,11 @@ fn spawn_worker_task(
                                 .start_timer();
 
                             let result = match label.as_str() {
-                                "account" => handle_account(&plugin, &data),
-                                "slot" => handle_slot(&plugin, &data),
-                                "transaction" => handle_transaction(&plugin, &data),
-                                "entry" => handle_entry(&plugin, &data),
-                                "block_metadata" => handle_block_metadata(&plugin, &data),
+                                WorkerLabels::ACCOUNT => handle_account(&plugin, &data),
+                                WorkerLabels::SLOT => handle_slot(&plugin, &data),
+                                WorkerLabels::TRANSACTION => handle_transaction(&plugin, &data),
+                                WorkerLabels::ENTRY => handle_entry(&plugin, &data),
+                                WorkerLabels::BLOCK_METADATA => handle_block_metadata(&plugin, &data),
                                 _ => Err(anyhow::anyhow!("Unknown stream label: {}", label)),
                             };
 
@@ -183,7 +188,7 @@ fn spawn_metrics_task(label: String, rx: flume::Receiver<Vec<u8>>, mut shutdown_
                     break;
                 }
                 _ = sleep(Duration::from_millis(500)) => {
-                    NATS_QUEUE_DEPTH
+                    NATS_FETCHER_BUFFER_LOAD
                         .with_label_values(&[&label])
                         .set(rx.len() as i64);
                 }
