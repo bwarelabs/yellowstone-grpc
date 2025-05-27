@@ -208,6 +208,55 @@ pub struct ConfigGrpc {
     pub server_initial_connection_window_size: Option<u32>,
     #[serde(default)]
     pub server_initial_stream_window_size: Option<u32>,
+    pub billing_kafka_topic: String,
+    pub billing_kafka_brokers: String,
+    #[serde(default)]
+    pub billing_kafka_username: Option<String>,
+    #[serde(default)]
+    pub billing_kafka_password: Option<String>,
+    #[serde(
+        default = "ConfigGrpc::default_billing_kafka_send_queue_timeout",
+        with = "humantime_serde"
+    )]
+    pub billing_kafka_send_queue_timeout: Duration,
+    #[serde(
+        default = "ConfigGrpc::default_billing_kafka_send_channel_size",
+    )]
+    pub billing_kafka_send_channel_size: usize,    #[serde(
+        default = "ConfigGrpc::default_billing_ticker_interval",
+        with = "humantime_serde"
+    )]
+    pub billing_ticker_interval: Duration,
+    pub redis_url: String,
+    pub redis_prefix: String,
+    #[serde(
+        default = "ConfigGrpc::default_redis_cache_ttl",
+        with = "humantime_serde"
+    )]
+    pub redis_cache_ttl: Duration,
+    #[serde(
+        default = "ConfigGrpc::default_redis_cache_capacity",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub redis_cache_capacity: usize,
+    /// Redis cache will background fetch after `redis_cache_ttl` + `redis_background_buffer`
+    #[serde(
+        default = "ConfigGrpc::default_redis_background_buffer",
+        with = "humantime_serde"
+    )]
+    pub redis_background_buffer: Duration,
+    /// Quota checker will check redis every `redis_check_interval`
+    #[serde(
+        default = "ConfigGrpc::default_quota_check_interval",
+        with = "humantime_serde"
+    )]
+    pub quota_check_interval: Duration,
+    /// Quota checker will check redis in batches of `quota_check_batch_size`
+    #[serde(
+        default = "ConfigGrpc::default_quota_check_batch_size",
+        deserialize_with = "deserialize_int_str"
+    )]
+    pub quota_check_batch_size: usize,
 }
 
 impl ConfigGrpc {
@@ -245,6 +294,38 @@ impl ConfigGrpc {
 
     const fn default_replay_stored_slots() -> u64 {
         0
+    }
+
+    const fn default_billing_ticker_interval() -> Duration {
+        Duration::from_secs(10)
+    }
+
+    const fn default_billing_kafka_send_queue_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+
+    const fn default_billing_kafka_send_channel_size() -> usize {
+        10_000
+    }
+
+    const fn default_redis_cache_ttl() -> Duration {
+        Duration::from_secs(30)
+    }
+
+    const fn default_redis_cache_capacity() -> usize {
+        10_000
+    }
+
+    const fn default_redis_background_buffer() -> Duration {
+        Duration::from_secs(15)
+    }
+
+    const fn default_quota_check_interval() -> Duration {
+        Duration::from_secs(10)
+    }
+
+    const fn default_quota_check_batch_size() -> usize {
+        1_000
     }
 }
 

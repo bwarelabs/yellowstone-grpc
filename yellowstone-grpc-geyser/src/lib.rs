@@ -1,7 +1,10 @@
 pub mod config;
 pub mod grpc;
+pub mod kafka_producer_service;
 pub mod metrics;
 pub mod plugin;
+pub mod redis;
+pub mod user_connection;
 pub mod version;
 
 pub fn get_thread_name() -> String {

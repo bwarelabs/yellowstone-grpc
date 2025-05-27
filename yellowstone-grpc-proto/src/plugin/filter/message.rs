@@ -379,6 +379,20 @@ impl FilteredUpdateOneof {
     pub const fn entry(message: Arc<MessageEntry>) -> Self {
         Self::Entry(FilteredUpdateEntry(message))
     }
+
+    pub const fn subscription_type(&self) -> &'static str {
+        match self {
+            FilteredUpdateOneof::Account(_) => "account",
+            FilteredUpdateOneof::Slot(_) => "slot",
+            FilteredUpdateOneof::Transaction(_) => "transaction",
+            FilteredUpdateOneof::TransactionStatus(_) => "transactionStatus",
+            FilteredUpdateOneof::Block(_) => "block",
+            FilteredUpdateOneof::Ping => "ping",
+            FilteredUpdateOneof::Pong(_) => "pong",
+            FilteredUpdateOneof::BlockMeta(_) => "blockMeta",
+            FilteredUpdateOneof::Entry(_) => "entry",
+        }
+    }
 }
 
 impl prost::Message for FilteredUpdateOneof {
