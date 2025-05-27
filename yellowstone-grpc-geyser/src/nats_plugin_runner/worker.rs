@@ -1,8 +1,8 @@
 use {
     crate::{
         metrics::{
-            NATS_FETCHER_ACTIVE, NATS_MESSAGES_DROPPED, NATS_MESSAGES_FETCHED,
-            NATS_WORKER_DURATION, NATS_WORKER_ERRORS,
+            NATS_BYTES_RECEIVED, NATS_FETCHER_ACTIVE, NATS_MESSAGES_DROPPED, NATS_MESSAGES_FETCHED,
+            NATS_QUEUE_DEPTH, NATS_WORKER_DURATION, NATS_WORKER_ERRORS,
         },
         nats_plugin_runner::dispatcher::{
             handle_account, handle_block_metadata, handle_entry, handle_slot, handle_transaction,
@@ -15,7 +15,7 @@ use {
     },
     flume,
     futures::StreamExt,
-    log::{error, info, warn},
+    log::{error, warn},
     std::sync::Arc,
     tokio::time::Duration,
 };
@@ -33,8 +33,8 @@ pub async fn start_stream_workers(
     let stream = js.get_stream(stream_name).await?;
     let consumer: Consumer<OrderedConfig> = stream
         .create_consumer(OrderedConfig {
+            name: Some(label.into()),
             max_batch: 64,
-            // max_expires: Duration::from_secs(2),
             ..Default::default()
         })
         .await?;
@@ -43,6 +43,7 @@ pub async fn start_stream_workers(
     {
         let tx = tx.clone();
         let label = label.to_string();
+
         tokio::spawn(async move {
             NATS_FETCHER_ACTIVE.with_label_values(&[&label]).set(1);
 
@@ -60,7 +61,8 @@ pub async fn start_stream_workers(
             while let Some(message_result) = messages.next().await {
                 match message_result {
                     Ok(msg) => {
-                        NATS_MESSAGES_FETCHED.with_label_values(&[&label]).inc();
+                        let payload = msg.payload.to_vec();
+                        let size = payload.len() as u64;
 
                         if tx.send_async(msg.payload.to_vec()).await.is_err() {
                             NATS_MESSAGES_DROPPED
@@ -68,17 +70,21 @@ pub async fn start_stream_workers(
                                 .inc();
                             warn!("[{}-fetcher] Dropped message: buffer full", label);
                         }
+
+                        NATS_MESSAGES_FETCHED.with_label_values(&[&label]).inc();
+                        NATS_BYTES_RECEIVED
+                            .with_label_values(&[&label])
+                            .inc_by(size);
                     }
                     Err(e) => {
                         NATS_WORKER_ERRORS
                             .with_label_values(&[&label, "fetch_error"])
                             .inc();
                         error!("[{}-fetcher] Stream error: {:?}", label, e);
-                        tokio::time::sleep(Duration::from_millis(200)).await;
                     }
                 }
             }
-
+            
             NATS_FETCHER_ACTIVE.with_label_values(&[&label]).set(0);
         });
     }
@@ -88,18 +94,15 @@ pub async fn start_stream_workers(
         let plugin = plugin.clone();
         let rx = rx.clone();
         let label = label.to_string();
-        let mut no_of_messages = 0;
 
         tokio::spawn(async move {
             while let Ok(data) = rx.recv_async().await {
-                no_of_messages += 1;
-                // info!("thread-{} received message", i);
                 let timer = NATS_WORKER_DURATION
                     .with_label_values(&[&label])
                     .start_timer();
 
                 let result = match label.as_str() {
-                    "account" => handle_account(&plugin, &data, i),
+                    "account" => handle_account(&plugin, &data),
                     "slot" => handle_slot(&plugin, &data),
                     "transaction" => handle_transaction(&plugin, &data),
                     "entry" => handle_entry(&plugin, &data),
@@ -115,14 +118,21 @@ pub async fn start_stream_workers(
                         .inc();
                     error!("[{}-worker-{}] Failed to handle message: {:?}", label, i, e);
                 }
-
-                info!(
-                    "[{}-worker-{}] Processed {} messages",
-                    label, i, no_of_messages
-                );
             }
         });
     }
+
+    let label = label.to_string();
+    let rx = rx.clone();
+
+    tokio::spawn(async move {
+        loop {
+            NATS_QUEUE_DEPTH
+                .with_label_values(&[&label])
+                .set(rx.len() as i64);
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    });
 
     Ok(())
 }

@@ -2,7 +2,6 @@ use {
     crate::{nats_geyser_plugin_interface::NatsGeyserPlugin, plugin::Plugin},
     anyhow::{Context, Result},
     bincode::{config, decode_from_slice},
-    log::info,
     solana_nats_geyser_protobufs::{
         account::AccountMessage, block_metadata::BlockMetadataMessage, entry::EntryMessage,
         slot::SlotMessage, transaction::TransactionMessage,
@@ -10,10 +9,9 @@ use {
     std::sync::Arc,
 };
 
-pub fn handle_account(plugin: &Arc<Plugin>, data: &[u8], thread_id: u64) -> Result<()> {
+pub fn handle_account(plugin: &Arc<Plugin>, data: &[u8]) -> Result<()> {
     let (msg, _): (AccountMessage, usize) = decode_from_slice(data, config::standard())
         .context("Failed to deserialize AccountMessage")?;
-    // info!("no of bytes {}", data.len());
     plugin
         .update_account(msg)
         .context("Plugin::update_account failed")

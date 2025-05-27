@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 
     // Create and load plugin before entering the async context
     let mut plugin = Plugin::default();
-    plugin.on_load("config.json", false)?;
+    plugin.on_load("config_20.json", false)?;
 
     let plugin_arc = Arc::new(plugin);
 
@@ -44,11 +44,11 @@ async fn async_main(config: &Config, plugin_arc: Arc<Plugin>) -> anyhow::Result<
     let js = jetstream::new(client);
 
     // TODO: move labels to some consts
-    // start_stream_workers("account", &config.nats.streams.account_stream_name, js.clone(), plugin_arc.clone()).await?;
-    // start_stream_workers("slot", &config.nats.streams.slot_stream_name, js.clone(), plugin_arc.clone()).await?;
+    start_stream_workers("account", &config.nats.streams.account_stream_name, js.clone(), plugin_arc.clone()).await?;
+    start_stream_workers("slot", &config.nats.streams.slot_stream_name, js.clone(), plugin_arc.clone()).await?;
     start_stream_workers("transaction", &config.nats.streams.transaction_stream_name, js.clone(), plugin_arc.clone()).await?;
-    // start_stream_workers("entry", &config.nats.streams.entry_stream_name, js.clone(), plugin_arc.clone()).await?;
-    // start_stream_workers("block_metadata", &config.nats.streams.block_metadata_stream_name, js.clone(), plugin_arc.clone()).await?;
+    start_stream_workers("entry", &config.nats.streams.entry_stream_name, js.clone(), plugin_arc.clone()).await?;
+    start_stream_workers("block_metadata", &config.nats.streams.block_metadata_stream_name, js.clone(), plugin_arc.clone()).await?;
 
     signal::ctrl_c().await?;
 

@@ -1,3 +1,4 @@
+use yellowstone_grpc_proto::prelude::SubscribeUpdateBlock;
 use {
     clap::Parser,
     futures::{sink::SinkExt, stream::StreamExt},
@@ -8,8 +9,8 @@ use {
     yellowstone_grpc_client::GeyserGrpcClient,
     yellowstone_grpc_proto::prelude::{
         subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
-        SubscribeRequestFilterSlots, SubscribeRequestPing, SubscribeUpdatePong,
-        SubscribeUpdateSlot,
+        SubscribeRequestFilterBlocks, SubscribeRequestFilterSlots, SubscribeRequestPing,
+        SubscribeUpdatePong, SubscribeUpdateSlot,
     },
 };
 
@@ -17,7 +18,7 @@ use {
 #[clap(author, version, about)]
 struct Args {
     /// Service endpoint
-    #[clap(short, long, default_value_t = String::from("http://127.0.0.1:10000"))]
+    #[clap(short, long, default_value_t = String::from("http://57.129.64.147:10002"))]
     endpoint: String,
 
     #[clap(long)]
@@ -34,8 +35,16 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
+    let team_id = Some("69".to_string());
+    let app_id = Some("0".to_string());
+    let network = Some("SOLANA_MAINNET".to_string());
+
     let mut client = GeyserGrpcClient::build_from_shared(args.endpoint)?
         .x_token(args.x_token)?
+        .max_decoding_message_size(67_108_864)
+        .team_id(team_id)?
+        .app_id(app_id)?
+        .network(network)?
         .tls_config(ClientTlsConfig::new().with_native_roots())?
         .connect()
         .await?;
@@ -49,6 +58,14 @@ async fn main() -> anyhow::Result<()> {
                         "".to_owned() => SubscribeRequestFilterSlots {
                             filter_by_commitment: Some(true),
                             interslot_updates: Some(false)
+                        }
+                    },
+                    blocks: maplit::hashmap! {
+                        "".to_owned() => SubscribeRequestFilterBlocks {
+                            account_include: vec![],
+                            include_transactions: Some(true),
+                            include_accounts: Some(true),
+                            include_entries: Some(true),
                         }
                     },
                     commitment: Some(CommitmentLevel::Processed as i32),
@@ -76,6 +93,12 @@ async fn main() -> anyhow::Result<()> {
                 match message?.update_oneof.expect("valid message") {
                     UpdateOneof::Slot(SubscribeUpdateSlot { slot, .. }) => {
                         info!("slot received: {slot}");
+                    }
+                    UpdateOneof::Block(SubscribeUpdateBlock {
+                        slot, blockhash, ..
+                    }) => {
+                        info!("slot received: {slot}");
+                        info!("blockhash received: {blockhash}");
                     }
                     UpdateOneof::Ping(_msg) => {
                         info!("ping received");

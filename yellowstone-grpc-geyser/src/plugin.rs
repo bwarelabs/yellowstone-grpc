@@ -1,5 +1,3 @@
-use log::info;
-#[allow(unused_imports)]
 use {
     crate::{
         config::Config,
@@ -8,7 +6,7 @@ use {
         nats_geyser_plugin_interface::NatsGeyserPlugin,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        GeyserPlugin, GeyserPluginError, Result as PluginResult, SlotStatus as GeyserSlotStatus,
+        GeyserPluginError, Result as PluginResult, SlotStatus as GeyserSlotStatus,
     },
     solana_nats_geyser_protobufs::{
         account::AccountMessage as NatsAccountMessage,

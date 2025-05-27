@@ -102,27 +102,37 @@ lazy_static::lazy_static! {
 
     /// NATS Consumer
     pub static ref NATS_FETCHER_ACTIVE: IntGaugeVec = IntGaugeVec::new(
-            Opts::new("nats_fetcher_active", "Indicates if the fetcher is actively polling the stream"),
-            &["stream"]
-        ).unwrap();
+        Opts::new("nats_fetcher_active", "Indicates if the fetcher is actively polling the stream"),
+        &["stream"]
+    ).unwrap();
 
-        pub static ref NATS_MESSAGES_FETCHED: IntCounterVec = IntCounterVec::new(
-            Opts::new("nats_messages_fetched_total", "Total number of messages fetched from NATS JetStream"),
-            &["stream"]
-        ).unwrap();
+    pub static ref NATS_MESSAGES_FETCHED: IntCounterVec = IntCounterVec::new(
+        Opts::new("nats_messages_fetched_total", "Total number of messages fetched from NATS JetStream"),
+        &["stream"]
+    ).unwrap();
 
-        pub static ref NATS_MESSAGES_DROPPED: IntCounterVec = IntCounterVec::new(
-            Opts::new("nats_messages_dropped_total", "Number of dropped messages (e.g. buffer full)"),
-            &["stream", "reason"]
-        ).unwrap();
+    pub static ref NATS_MESSAGES_DROPPED: IntCounterVec = IntCounterVec::new(
+        Opts::new("nats_messages_dropped_total", "Number of dropped messages (e.g. buffer full)"),
+        &["stream", "reason"]
+    ).unwrap();
 
-        pub static ref NATS_WORKER_ERRORS: IntCounterVec = IntCounterVec::new(
-            Opts::new("nats_worker_errors_total", "Errors while handling messages"),
-            &["stream", "error_type"]
-        ).unwrap();
+    pub static ref NATS_WORKER_ERRORS: IntCounterVec = IntCounterVec::new(
+        Opts::new("nats_worker_errors_total", "Errors while handling messages"),
+        &["stream", "error_type"]
+    ).unwrap();
 
-        pub static ref NATS_WORKER_DURATION: HistogramVec = HistogramVec::new(
-            HistogramOpts::new("nats_worker_duration_seconds", "Time to process a single message"),
+    pub static ref NATS_WORKER_DURATION: HistogramVec = HistogramVec::new(
+        HistogramOpts::new("nats_worker_duration_seconds", "Time to process a single message"),
+        &["stream"]
+    ).unwrap();
+
+     pub static ref NATS_QUEUE_DEPTH: IntGaugeVec = IntGaugeVec::new(
+        Opts::new("nats_queue_depth", "Number of messages in the queue for each stream"),
+        &["stream"]
+     ).unwrap();
+
+    pub static ref NATS_BYTES_RECEIVED: IntCounterVec = IntCounterVec::new(
+            Opts::new("nats_bytes_received_total", "Total number of bytes received from NATS JetStream"),
             &["stream"]
         ).unwrap();
 }
@@ -269,6 +279,8 @@ impl PrometheusService {
             register!(NATS_MESSAGES_DROPPED);
             register!(NATS_WORKER_ERRORS);
             register!(NATS_WORKER_DURATION);
+            register!(NATS_QUEUE_DEPTH);
+            register!(NATS_BYTES_RECEIVED);
 
             VERSION
                 .with_label_values(&[
@@ -375,6 +387,7 @@ fn metrics_handler() -> http::Result<Response<BoxBody<Bytes, Infallible>>> {
         });
     Response::builder()
         .status(StatusCode::OK)
+        .header("Content-Type", "text/plain; version=0.0.4")
         .body(BodyFull::new(Bytes::from(metrics)).boxed())
 }
 
