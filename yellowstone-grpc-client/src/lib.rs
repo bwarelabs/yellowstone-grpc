@@ -28,6 +28,9 @@ use {
 pub struct InterceptorXToken {
     pub x_token: Option<AsciiMetadataValue>,
     pub x_request_snapshot: bool,
+    pub team_id: Option<AsciiMetadataValue>,
+    pub app_id: Option<AsciiMetadataValue>,
+    pub network: Option<AsciiMetadataValue>,
 }
 
 impl Interceptor for InterceptorXToken {
@@ -39,6 +42,15 @@ impl Interceptor for InterceptorXToken {
             request
                 .metadata_mut()
                 .insert("x-request-snapshot", MetadataValue::from_static("true"));
+        }
+        if let Some(team_id) = self.team_id.clone() {
+            request.metadata_mut().insert("x-alchemy-team-id", team_id);
+        }
+        if let Some(app_id) = self.app_id.clone() {
+            request.metadata_mut().insert("x-alchemy-app-id", app_id);
+        }
+        if let Some(network) = self.network.clone() {
+            request.metadata_mut().insert("x-alchemy-network", network);
         }
         Ok(request)
     }
@@ -221,6 +233,9 @@ pub struct GeyserGrpcBuilder {
     pub endpoint: Endpoint,
     pub x_token: Option<AsciiMetadataValue>,
     pub x_request_snapshot: bool,
+    pub team_id: Option<AsciiMetadataValue>,
+    pub app_id: Option<AsciiMetadataValue>,
+    pub network: Option<AsciiMetadataValue>,
     pub send_compressed: Option<CompressionEncoding>,
     pub accept_compressed: Option<CompressionEncoding>,
     pub max_decoding_message_size: Option<usize>,
@@ -234,6 +249,9 @@ impl GeyserGrpcBuilder {
             endpoint,
             x_token: None,
             x_request_snapshot: false,
+            team_id: None,
+            app_id: None,
+            network: None,
             send_compressed: None,
             accept_compressed: None,
             max_decoding_message_size: None,
@@ -257,6 +275,9 @@ impl GeyserGrpcBuilder {
         let interceptor = InterceptorXToken {
             x_token: self.x_token,
             x_request_snapshot: self.x_request_snapshot,
+            team_id: self.team_id,
+            app_id: self.app_id,
+            network: self.network,
         };
 
         let mut geyser = GeyserClient::with_interceptor(channel.clone(), interceptor.clone());
@@ -296,6 +317,36 @@ impl GeyserGrpcBuilder {
     {
         Ok(Self {
             x_token: x_token.map(|x_token| x_token.try_into()).transpose()?,
+            ..self
+        })
+    }
+
+    pub fn team_id<T>(self, team_id: Option<T>) -> GeyserGrpcBuilderResult<Self>
+    where
+        T: TryInto<AsciiMetadataValue, Error = InvalidMetadataValue>,
+    {
+        Ok(Self {
+            team_id: team_id.map(|id| id.try_into()).transpose()?,
+            ..self
+        })
+    }
+
+    pub fn app_id<T>(self, app_id: Option<T>) -> GeyserGrpcBuilderResult<Self>
+    where
+        T: TryInto<AsciiMetadataValue, Error = InvalidMetadataValue>,
+    {
+        Ok(Self {
+            app_id: app_id.map(|id| id.try_into()).transpose()?,
+            ..self
+        })
+    }
+
+    pub fn network<T>(self, network: Option<T>) -> GeyserGrpcBuilderResult<Self>
+    where
+        T: TryInto<AsciiMetadataValue, Error = InvalidMetadataValue>,
+    {
+        Ok(Self {
+            network: network.map(|network| network.try_into()).transpose()?,
             ..self
         })
     }
