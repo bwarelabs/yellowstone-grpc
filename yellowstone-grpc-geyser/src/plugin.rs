@@ -8,7 +8,7 @@ use {
     agave_geyser_plugin_interface::geyser_plugin_interface::{
         GeyserPluginError, Result as PluginResult, SlotStatus as GeyserSlotStatus,
     },
-    solana_nats_geyser_protobufs::{
+    solana_nats_geyser_structs::{
         account::AccountMessage as NatsAccountMessage,
         block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
         entry::EntryMessage as NatsEntryMessage, slot::SlotMessage as NatsSlotMessage,

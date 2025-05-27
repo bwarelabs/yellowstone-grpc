@@ -5033,9 +5033,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "307fb2f78060995979e9b4f68f833623565ed4e55d3725f100454ce78a99a1a3"
 
 [[package]]
-name = "solana-nats-geyser-protobufs"
+name = "solana-nats-geyser-structs"
 version = "0.1.0"
-source = "git+ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git?branch=main#221a6dc2303d486a2f1cfdd1320044fbff1912e0"
+source = "git+ssh://git@github.com/bwarelabs/solana-nats-geyser-structs.git?branch=main#24a2eb8d83ba03ec6630b407edcb87591e13b3a5"
 dependencies = [
  "agave-geyser-plugin-interface",
  "bincode 2.0.1",
@@ -7583,7 +7583,7 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-logger",
- "solana-nats-geyser-protobufs",
+ "solana-nats-geyser-structs",
  "solana-sdk",
  "solana-transaction-status",
  "spl-token-2022 6.0.0",
@@ -7617,7 +7617,7 @@ dependencies = [
  "smallvec",
  "solana-account-decoder",
  "solana-message",
- "solana-nats-geyser-protobufs",
+ "solana-nats-geyser-structs",
  "solana-sdk",
  "solana-storage-proto",
  "solana-transaction-status",

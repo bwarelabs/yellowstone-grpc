@@ -2,7 +2,7 @@ use {
     crate::{nats_geyser_plugin_interface::NatsGeyserPlugin, plugin::Plugin},
     anyhow::{Context, Result},
     bincode::{config, decode_from_slice},
-    solana_nats_geyser_protobufs::{
+    solana_nats_geyser_structs::{
         account::AccountMessage, block_metadata::BlockMetadataMessage, entry::EntryMessage,
         slot::SlotMessage, transaction::TransactionMessage,
     },

@@ -44,7 +44,7 @@ pub mod plugin;
 pub mod convert_to {
     use {
         super::prelude as proto,
-        solana_nats_geyser_protobufs::{
+        solana_nats_geyser_structs::{
             block_metadata::{Reward as NatsReward, RewardType as NatsRewardType},
             transaction::{
                 CompiledInstruction as NatsCompiledInstruction,

@@ -15,7 +15,7 @@ use {
     },
     prost_types::Timestamp,
     solana_message::v0::LoadedAddresses,
-    solana_nats_geyser_protobufs::{
+    solana_nats_geyser_structs::{
         account::AccountMessage, block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
         entry::EntryMessage as NatsEntryMessage, slot::SlotStatus as NatsSlotStatus,
         transaction::TransactionMessage as NatsTransactionMessage,

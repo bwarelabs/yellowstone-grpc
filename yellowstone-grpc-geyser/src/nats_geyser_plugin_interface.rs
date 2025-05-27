@@ -1,6 +1,6 @@
 use {
     agave_geyser_plugin_interface::geyser_plugin_interface::Result,
-    solana_nats_geyser_protobufs::{
+    solana_nats_geyser_structs::{
         account::AccountMessage, block_metadata::BlockMetadataMessage, entry::EntryMessage,
         slot::SlotMessage, transaction::TransactionMessage,
     },

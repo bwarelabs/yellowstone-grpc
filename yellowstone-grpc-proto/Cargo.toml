@@ -34,7 +34,7 @@ smallvec = { workspace = true, optional = true }
 spl-token-2022 = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true }
-solana-nats-geyser-protobufs = { git = "ssh://git@github.com/bwarelabs/solana-nats-geyser-protobufs.git", branch = "main" }
+solana-nats-geyser-structs = { git = "ssh://git@github.com/bwarelabs/solana-nats-geyser-structs.git", branch = "main" }
 
 [dev-dependencies]
 criterion = { workspace = true }
