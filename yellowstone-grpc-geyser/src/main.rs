@@ -1,6 +1,6 @@
 use {
     async_nats::{connect, jetstream},
-    std::{process::exit, sync::Arc},
+    std::{env, process::exit, sync::Arc},
     tokio::{signal, sync::broadcast},
     yellowstone_grpc_geyser::{
         nats_geyser_plugin_interface::NatsGeyserPlugin,
@@ -12,6 +12,12 @@ use {
 };
 
 fn main() -> anyhow::Result<()> {
+    env::set_var(
+        env_logger::DEFAULT_FILTER_ENV,
+        env::var_os(env_logger::DEFAULT_FILTER_ENV).unwrap_or_else(|| "info".into()),
+    );
+    env_logger::init();
+
     let mut plugin = Plugin::default();
     plugin.on_load("config.json", false)?;
 

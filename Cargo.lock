@@ -7563,6 +7563,7 @@ dependencies = [
  "crossbeam-channel",
  "dashmap",
  "deadpool-redis",
+ "env_logger 0.11.8",
  "flume",
  "futures",
  "git-version",
