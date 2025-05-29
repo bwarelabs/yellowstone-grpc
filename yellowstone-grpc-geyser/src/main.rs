@@ -1,7 +1,12 @@
 use {
     async_nats::{connect, jetstream},
-    std::{env, process::exit, sync::Arc},
+    atty::{is, Stream},
+    std::{process::exit, sync::Arc},
     tokio::{signal, sync::broadcast},
+    tracing_log::LogTracer,
+    tracing_subscriber::{
+        fmt, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    },
     yellowstone_grpc_geyser::{
         nats_geyser_plugin_interface::NatsGeyserPlugin,
         nats_plugin_runner::{
@@ -12,11 +17,25 @@ use {
 };
 
 fn main() -> anyhow::Result<()> {
-    env::set_var(
-        env_logger::DEFAULT_FILTER_ENV,
-        env::var_os(env_logger::DEFAULT_FILTER_ENV).unwrap_or_else(|| "info".into()),
-    );
-    env_logger::init();
+    // Bridge log crate to tracing
+    LogTracer::init().expect("Failed to set logger");
+
+    let fmt_layer = fmt::layer()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_ansi(is(Stream::Stdout))
+        .with_level(true);
+
+    let filter_layer = EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info"))?;
+
+    if tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .try_init()
+        .is_err()
+    {
+        eprintln!("Tracing subscriber already initialized, skipping.");
+    }
 
     let mut plugin = Plugin::default();
     plugin.on_load("config.json", false)?;
