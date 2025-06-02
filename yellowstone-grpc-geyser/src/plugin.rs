@@ -3,18 +3,20 @@ use {
         config::Config,
         grpc::GrpcService,
         metrics::{self, PrometheusService},
+        nats_geyser_plugin_interface::NatsGeyserPlugin,
     },
     agave_geyser_plugin_interface::geyser_plugin_interface::{
-        GeyserPlugin, GeyserPluginError, ReplicaAccountInfoVersions, ReplicaBlockInfoVersions,
-        ReplicaEntryInfoVersions, ReplicaTransactionInfoVersions, Result as PluginResult,
-        SlotStatus,
+        GeyserPluginError, Result as PluginResult, SlotStatus as GeyserSlotStatus,
+    },
+    solana_nats_geyser_structs::{
+        account::AccountMessage as NatsAccountMessage,
+        block_metadata::BlockMetadataMessage as NatsBlockMetadataMessage,
+        entry::EntryMessage as NatsEntryMessage, slot::SlotMessage as NatsSlotMessage,
+        transaction::TransactionMessage as NatsTransactionMessage,
     },
     std::{
         concat, env,
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc, Mutex,
-        },
+        sync::{atomic::AtomicBool, Arc, Mutex},
         time::Duration,
     },
     tokio::{
@@ -30,6 +32,7 @@ use {
 pub struct PluginInner {
     runtime: Runtime,
     snapshot_channel: Mutex<Option<crossbeam_channel::Sender<Box<Message>>>>,
+    #[allow(dead_code)]
     snapshot_channel_closed: AtomicBool,
     grpc_channel: mpsc::UnboundedSender<Message>,
     grpc_shutdown: Arc<Notify>,
@@ -59,7 +62,7 @@ impl Plugin {
     }
 }
 
-impl GeyserPlugin for Plugin {
+impl NatsGeyserPlugin for Plugin {
     fn name(&self) -> &'static str {
         concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
     }
@@ -132,43 +135,11 @@ impl GeyserPlugin for Plugin {
         }
     }
 
-    fn update_account(
-        &self,
-        account: ReplicaAccountInfoVersions,
-        slot: u64,
-        is_startup: bool,
-    ) -> PluginResult<()> {
+    fn update_account(&self, account: NatsAccountMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let account = match account {
-                ReplicaAccountInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaAccountInfoVersions::V0_0_3(info) => info,
-            };
-
-            if is_startup {
-                if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
-                    let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-                    match channel.send(Box::new(message)) {
-                        Ok(()) => metrics::message_queue_size_inc(),
-                        Err(_) => {
-                            if !inner.snapshot_channel_closed.swap(true, Ordering::Relaxed) {
-                                log::error!(
-                                    "failed to send message to startup queue: channel closed"
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
-                inner.send_message(message);
-            }
+            let slot = account.slot;
+            let message = Message::Account(MessageAccount::from_nats(account, slot, false));
+            inner.send_message(message);
 
             Ok(())
         })
@@ -181,73 +152,44 @@ impl GeyserPlugin for Plugin {
         })
     }
 
-    fn update_slot_status(
-        &self,
-        slot: u64,
-        parent: Option<u64>,
-        status: &SlotStatus,
-    ) -> PluginResult<()> {
+    fn update_slot_status(&self, slot: NatsSlotMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            let NatsSlotMessage {
+                slot,
+                parent,
+                status,
+            } = slot;
+            let geyser_slot_status = GeyserSlotStatus::from(status);
+            let message =
+                Message::Slot(MessageSlot::from_geyser(slot, parent, &geyser_slot_status));
             inner.send_message(message);
-            metrics::update_slot_status(status, slot);
+            metrics::update_slot_status(&geyser_slot_status, slot);
             Ok(())
         })
     }
 
-    fn notify_transaction(
-        &self,
-        transaction: ReplicaTransactionInfoVersions<'_>,
-        slot: u64,
-    ) -> PluginResult<()> {
+    fn notify_transaction(&self, transaction: NatsTransactionMessage) -> PluginResult<()> {
+        let slot = transaction.slot;
         self.with_inner(|inner| {
-            let transaction = match transaction {
-                ReplicaTransactionInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaAccountInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaTransactionInfoVersions::V0_0_2(info) => info,
-            };
-
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
+            let message = Message::Transaction(MessageTransaction::from_nats(transaction, slot));
             inner.send_message(message);
 
             Ok(())
         })
     }
 
-    fn notify_entry(&self, entry: ReplicaEntryInfoVersions) -> PluginResult<()> {
+    fn notify_entry(&self, entry: NatsEntryMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            #[allow(clippy::infallible_destructuring_match)]
-            let entry = match entry {
-                ReplicaEntryInfoVersions::V0_0_1(_entry) => {
-                    unreachable!("ReplicaEntryInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
-            };
-
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
+            let message = Message::Entry(Arc::new(MessageEntry::from_nats(entry)));
             inner.send_message(message);
 
             Ok(())
         })
     }
 
-    fn notify_block_metadata(&self, blockinfo: ReplicaBlockInfoVersions<'_>) -> PluginResult<()> {
+    fn notify_block_metadata(&self, blockinfo: NatsBlockMetadataMessage) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let blockinfo = match blockinfo {
-                ReplicaBlockInfoVersions::V0_0_1(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_1 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_2(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_2 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_3(_info) => {
-                    unreachable!("ReplicaBlockInfoVersions::V0_0_3 is not supported")
-                }
-                ReplicaBlockInfoVersions::V0_0_4(info) => info,
-            };
-
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_nats(blockinfo)));
             inner.send_message(message);
 
             Ok(())
@@ -271,13 +213,13 @@ impl GeyserPlugin for Plugin {
     }
 }
 
-#[no_mangle]
-#[allow(improper_ctypes_definitions)]
-/// # Safety
-///
-/// This function returns the Plugin pointer as trait GeyserPlugin.
-pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
-    let plugin = Plugin::default();
-    let plugin: Box<dyn GeyserPlugin> = Box::new(plugin);
-    Box::into_raw(plugin)
-}
+// #[no_mangle]
+// #[allow(improper_ctypes_definitions)]
+// /// # Safety
+// ///
+// /// This function returns the Plugin pointer as trait GeyserPlugin.
+// pub unsafe extern "C" fn _create_plugin() -> *mut dyn GeyserPlugin {
+//     let plugin = Plugin::default();
+//     let plugin: Box<dyn GeyserPlugin> = Box::new(plugin);
+//     Box::into_raw(plugin)
+// }

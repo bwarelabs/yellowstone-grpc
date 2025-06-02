@@ -219,10 +219,9 @@ pub struct ConfigGrpc {
         with = "humantime_serde"
     )]
     pub billing_kafka_send_queue_timeout: Duration,
+    #[serde(default = "ConfigGrpc::default_billing_kafka_send_channel_size")]
+    pub billing_kafka_send_channel_size: usize,
     #[serde(
-        default = "ConfigGrpc::default_billing_kafka_send_channel_size",
-    )]
-    pub billing_kafka_send_channel_size: usize,    #[serde(
         default = "ConfigGrpc::default_billing_ticker_interval",
         with = "humantime_serde"
     )]
